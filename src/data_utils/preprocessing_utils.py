@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 MAX_WEEK_DAY = 4
 MAX_MONTH_DAY = 31
@@ -33,7 +34,9 @@ def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     return dataframe
 
 
-def add_period_return(dataframe: pd.DataFrame, period: int = 1) -> pd.DataFrame:
+def add_period_return(dataframe: pd.DataFrame,
+                      period: int = 1,
+                      method: str = "linear") -> pd.DataFrame:
     """
     Add the column 'Return' to the input dataframe. It represents.
     Most financial studies involve returns, instead of prices, of assets.
@@ -44,6 +47,7 @@ def add_period_return(dataframe: pd.DataFrame, period: int = 1) -> pd.DataFrame:
 
     :param dataframe: dataframe to be processed.
     :param period: Period return
+    :param method: "linear" or "log"
     :return: processed dataframe.
     """
 
@@ -51,8 +55,29 @@ def add_period_return(dataframe: pd.DataFrame, period: int = 1) -> pd.DataFrame:
         dataframe['Return'] = 1
     # Base case
     if period == 0:
+        if method == "linear":
+            dataframe['Return'] = dataframe['Return'] - 1
+        else:
+            dataframe['Return'] = np.log(dataframe['Return'])
         return dataframe
     dataframe['Return'] = \
         dataframe['Return'] * dataframe['Close'].shift(periods=period - 1) / dataframe['Close'].shift(periods=period)
     # Recursive call
     return add_period_return(dataframe=dataframe, period=period - 1)
+
+
+def standardize_dataframe_cols(dataframe: pd.DataFrame,
+                               col_names: list = None) -> pd.DataFrame:
+    """
+    Standardize the specified columns of the input dataframe.
+
+    :param dataframe: dataframe to standardize.
+    :param col_names: columns to standardize.
+    :return: the standardized dataframe.
+    """
+    if col_names is None:
+        col_names = ["Open", "High", "Low", "Close", "Volume"]
+
+    dataframe[col_names] = (dataframe[col_names] - dataframe[col_names].mean()) / dataframe[col_names].std()
+
+    return dataframe
