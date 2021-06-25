@@ -9,6 +9,7 @@ def simulation(params: dict) -> None:
 
     :param params: dict with parameters.
     """
+
     dataframe = params['Dataframe']
     period = params['Period']
     p_l = 0
