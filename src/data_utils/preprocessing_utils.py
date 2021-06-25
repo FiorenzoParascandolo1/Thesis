@@ -36,7 +36,7 @@ def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
 
 def add_period_return(dataframe: pd.DataFrame,
                       period: int = 1,
-                      method: str = "linear") -> pd.DataFrame:
+                      method: str = "log") -> pd.DataFrame:
     """
     Add the column 'Return' to the input dataframe. It represents.
     Most financial studies involve returns, instead of prices, of assets.
@@ -81,3 +81,36 @@ def standardize_dataframe_cols(dataframe: pd.DataFrame,
     dataframe[col_names] = (dataframe[col_names] - dataframe[col_names].mean()) / dataframe[col_names].std()
 
     return dataframe
+
+
+def normalize_dataframe_cols(dataframe: pd.DataFrame,
+                             col_names: list = None) -> pd.DataFrame:
+    """
+    Standardize the specified columns of the input dataframe.
+
+    :param dataframe: dataframe to normalize.
+    :param col_names: columns to normalize.
+    :return: the normalized dataframe.
+    """
+    if col_names is None:
+        col_names = ["Open", "High", "Low", "Close", "Volume"]
+
+    dataframe[col_names] = (dataframe[col_names] - dataframe[col_names].min()) / \
+                           (dataframe[col_names].max() - dataframe[col_names].min())
+
+    return dataframe
+
+
+def download_data(ticker: str,
+                  period: str) -> pd.DataFrame:
+    """
+    Download data from https://firstratedata.com/.
+
+    :param ticker: the name of the stock.
+    :param period: aggregation period of data.
+    :return: the downloaded dataframe.
+    """
+    return pd.read_csv("s3://aivo-rnd-trading/data/frd-sp500/5min/" + ticker + "_" + period + ".txt",
+                       header=None,
+                       names=["DateTime", "Open", "High", "Low", "Close", "Volume"],
+                       parse_dates=["DateTime"])
