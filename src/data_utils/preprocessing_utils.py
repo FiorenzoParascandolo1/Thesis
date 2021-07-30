@@ -99,18 +99,3 @@ def normalize_dataframe_cols(dataframe: pd.DataFrame,
                            (dataframe[col_names].max() - dataframe[col_names].min())
 
     return dataframe
-
-
-def download_data(ticker: str,
-                  period: str) -> pd.DataFrame:
-    """
-    Download data from https://firstratedata.com/.
-
-    :param ticker: the name of the stock.
-    :param period: aggregation period of data.
-    :return: the downloaded dataframe.
-    """
-    return pd.read_csv("s3://aivo-rnd-trading/data/frd-sp500/5min/" + ticker + "_" + period + ".txt",
-                       header=None,
-                       names=["DateTime", "Open", "High", "Low", "Close", "Volume"],
-                       parse_dates=["DateTime"])
