@@ -1,4 +1,5 @@
 from src.simulation.environment import Environment
+from src.simulation.training import training_loop
 
 params = {
     'Provider': "histdata",
@@ -7,13 +8,12 @@ params = {
     'TimeGroup': "1d",
     'EnvType': "stocks-v0",
     'WindowSize': 10,
-    'FrameBound': (10, 300)
 }
 
 
 def main():
     env = Environment(params)
-    env.print_information()
+    training_loop(env)
 
 
 if __name__ == "__main__":

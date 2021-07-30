@@ -21,10 +21,13 @@ class Environment(object):
         self.env = gym.make(params['EnvType'],
                             df=df,
                             window_size=params['WindowSize'],
-                            frame_bound=params['FrameBound'])
+                            frame_bound=(params['WindowSize'], len(df)))
 
     def reset(self):
-        self.env.reset()
+        return self.env.reset()
+
+    def step(self, action):
+        return self.env.step(action)
 
     def print_information(self):
         print("custom_env information:")
@@ -36,3 +39,6 @@ class Environment(object):
 
     def render(self):
         self.env.render()
+
+    def render_all(self):
+        self.env.render_all()
