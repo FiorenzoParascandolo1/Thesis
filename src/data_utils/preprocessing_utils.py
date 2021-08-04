@@ -6,15 +6,56 @@ MAX_MONTH_DAY = 31
 MAX_MONTH = 12
 
 
+def period_arc_cos(x):
+    """
+    Compute the elements required for GADF/GASF transformations
+
+    :param x: time series to be processed.
+    :return: the arccos of the rescaled time series.
+    """
+    return np.arccos(rescaling(x))
+
+
+def rescaling(x):
+    """
+    Rescale a time series in [0, 1] range
+
+    :param x: time series to be processed.
+    :return: rescaled time series.
+    """
+    return ((x - max(x)) + (x - min(x))) / (max(x) - min(x))
+
+
+def gasf(x):
+    """
+    The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
+    GASF = [cos(θi + θj )]
+
+    :param x: time series to be processed.
+    :return: GASF matrix.
+    """
+    period = period_arc_cos(x)
+    return np.array([[np.cos(i + j) for j in period] for i in period])
+
+
+def gadf(x):
+    """
+    The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
+    GADF = [sin(θi + θj )]
+
+    :param x: time series to be processed.
+    :return: GADF matrix.
+    """
+    period = period_arc_cos(x)
+    return np.array([[np.sin(i - j) for j in period] for i in period])
+
+
 def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     """
     Add time information as columns:
     - WeekDay: [0, 0.2, 0.4, 0.6, 0.8, 1] <-> [Monday, Tuesday, Wednesday, Thursday, Friday]
     - MonthDay: [1 / 31, ..., 1]
     - Month: [1/12, ..., 1]
-    - Hour: [0, 1/23, ..., 1]
-    - Minute: [0, 5/55 ..., 1]
-    - TradeHour: 1 if the market is open in that time else 0
 
     :param dataframe: dataframe to be processed.
     :return: processed dataframe.

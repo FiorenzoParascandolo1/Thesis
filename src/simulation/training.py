@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 
+from src.data_utils.preprocessing_utils import gadf
 from src.simulation.environment import Environment
 
 
@@ -8,7 +9,7 @@ def training_loop(env: Environment):
     while True:
         action = env.action_space.sample()
         observation, reward, done, info = env.step(action)
-        print(observation)
+        print(gadf(observation).shape)
         print(reward)
         print(done)
         print(info)
