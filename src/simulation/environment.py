@@ -1,44 +1,16 @@
-import gym
-import gym_anytrading
-import pyfinancialdata
-from gym_anytrading.envs import TradingEnv, ForexEnv, StocksEnv, Actions, Positions
-from gym_anytrading.datasets import FOREX_EURUSD_1H_ASK, STOCKS_GOOGL
-import matplotlib.pyplot as plt
+from gym_anytrading.envs import StocksEnv
 
 
-class Environment(object):
-    def __init__(self,
-                 params: dict):
-        """
-        :param params: the parameters required to initialize the environment
-        """
-        df = pyfinancialdata.get_multi_year(provider=params['Provider'],
-                                            instrument=params['Instrument'],
-                                            years=params['Years'],
-                                            time_group=params['TimeGroup'])
-        df = df.reset_index()
-        df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Price']
-        self.env = gym.make(params['EnvType'],
-                            df=df,
-                            window_size=params['WindowSize'],
-                            frame_bound=(params['WindowSize'], len(df)))
+def my_process_data(env):
+    start = env.frame_bound[0] - env.window_size
+    end = env.frame_bound[1]
+    prices = env.df.loc[:, 'Close'].to_numpy()[start:end]
+    signal_features = env.df.loc[:, ['Close', 'Open', 'High', 'Low']].to_numpy()[start:end]
+    return prices, signal_features
 
-    def reset(self):
-        return self.env.reset()
 
-    def step(self, action):
-        return self.env.step(action)
+class Environment(StocksEnv):
+    _process_data = my_process_data
 
-    def print_information(self):
-        print("custom_env information:")
-        print("> shape:", self.env.shape)
-        print("> df.shape:", self.env.df.shape)
-        print("> prices.shape:", self.env.prices.shape)
-        print("> signal_features.shape:", self.env.signal_features.shape)
-        print("> max_possible_profit:", self.env.max_possible_profit())
-
-    def render(self):
-        self.env.render()
-
-    def render_all(self):
-        self.env.render_all()
+    def __init__(self, df, window_size, frame_bound):
+        super().__init__(df, window_size, frame_bound)

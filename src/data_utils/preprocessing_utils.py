@@ -4,10 +4,6 @@ import numpy as np
 MAX_WEEK_DAY = 4
 MAX_MONTH_DAY = 31
 MAX_MONTH = 12
-MAX_HOUR = 23
-MAX_MINUTE = 55
-STARTING_TRADE_HOUR = 9 / 23
-FINAL_TRADE_HOUR = 16 / 23
 
 
 def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -24,12 +20,9 @@ def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     :return: processed dataframe.
     """
 
-    dataframe['WeekDay'] = dataframe['DateTime'].apply(lambda x: x.weekday() / MAX_WEEK_DAY)
-    dataframe['MonthDay'] = dataframe['DateTime'].apply(lambda x: x.day / MAX_MONTH_DAY)
-    dataframe['Month'] = dataframe['DateTime'].apply(lambda x: x.month / MAX_MONTH)
-    dataframe['Hour'] = dataframe['DateTime'].apply(lambda x: x.hour / MAX_HOUR)
-    dataframe['Minute'] = dataframe['DateTime'].apply(lambda x: x.minute / MAX_MINUTE)
-    dataframe['TradeHour'] = 1 * (dataframe['Hour'] > STARTING_TRADE_HOUR) * (dataframe['Hour'] < FINAL_TRADE_HOUR)
+    dataframe['WeekDay'] = dataframe['Date'].apply(lambda x: x.weekday() / MAX_WEEK_DAY)
+    dataframe['MonthDay'] = dataframe['Date'].apply(lambda x: x.day / MAX_MONTH_DAY)
+    dataframe['Month'] = dataframe['Date'].apply(lambda x: x.month / MAX_MONTH)
 
     return dataframe
 
