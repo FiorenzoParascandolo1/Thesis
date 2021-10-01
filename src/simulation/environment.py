@@ -87,10 +87,10 @@ class Environment(StocksEnv):
 
         if (action[0] == Actions.Sell.value and self._position == Positions.Long) or \
                 (action[0] == Actions.Buy.value and self._position == Positions.Long):
-            self.equity_trading_system.append((self._total_reward + (self.prices[self._last_trade_tick] - price_2)
+            self.equity_trading_system.append((self._total_reward + (price_2 - self.prices[self._last_trade_tick])
                                                / self.prices[self._last_trade_tick] * self.cap_inv)
                                               / self.starting_wallet)
-            self.pl_series.append((self.prices[self._last_trade_tick] - price_2)
+            self.pl_series.append((price_2 - self.prices[self._last_trade_tick])
                                   / self.prices[self._last_trade_tick] * self.cap_inv)
             if self.equity_trading_system[-1] > 1:
                 self.equity_trading_system[-1] -= 1
@@ -98,7 +98,7 @@ class Environment(StocksEnv):
             self.equity_trading_system.append(self.equity_trading_system[-1])
             self.pl_series.append(0)
         self.equity_benchmark.append((self.prices[self._current_tick - 2] -
-                                      self.prices[self._start_tick - 1]) / self.prices[self._start_tick - 1])
+                                      self.prices[self._start_tick]) / self.prices[self._start_tick])
         if self.equity_benchmark[-1] > 1:
             self.equity_benchmark[-1] -= 1
 
