@@ -1,7 +1,10 @@
 import pandas as pd
 import numpy as np
+import torch
+from matplotlib import cm
+from pyts.image import GramianAngularField
 
-MAX_WEEK_DAY = 4
+MAX_WEEK_DAY = 5
 MAX_MONTH_DAY = 31
 MAX_MONTH = 12
 
@@ -13,7 +16,7 @@ def period_arc_cos(x):
     :param x: time series to be processed.
     :return: the arccos of the rescaled time series.
     """
-    return np.arccos(rescaling(x))
+    return np.arccos(rescaling(x.astype(np.float32)))
 
 
 def rescaling(x):
@@ -23,31 +26,29 @@ def rescaling(x):
     :param x: time series to be processed.
     :return: rescaled time series.
     """
-    return ((x - max(x)) + (x - min(x))) / (max(x) - min(x))
+    return ((x - max(x)) + (x - min(x))) / (max(x) - min(x) + 1e-5)
 
 
 def gasf(x):
     """
     The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
-    GASF = [cos(θi + θj )]
+    GASF = [cos(θi + θj)]
 
     :param x: time series to be processed.
     :return: GASF matrix.
     """
-    period = period_arc_cos(x)
-    return np.array([[np.cos(i + j) for j in period] for i in period])
+    return np.array([[np.cos(i + j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])
 
 
 def gadf(x):
     """
     The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
-    GADF = [sin(θi + θj )]
+    GADF = [sin(θi - θj)]
 
     :param x: time series to be processed.
     :return: GADF matrix.
     """
-    period = period_arc_cos(x)
-    return np.array([[np.sin(i - j) for j in period] for i in period])
+    return np.array([[np.sin(i - j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])
 
 
 def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -61,7 +62,7 @@ def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     :return: processed dataframe.
     """
 
-    dataframe['WeekDay'] = dataframe['Date'].apply(lambda x: x.weekday() / MAX_WEEK_DAY)
+    dataframe['WeekDay'] = dataframe['Date'].apply(lambda x: (x.weekday() + 1) / MAX_WEEK_DAY)
     dataframe['MonthDay'] = dataframe['Date'].apply(lambda x: x.day / MAX_MONTH_DAY)
     dataframe['Month'] = dataframe['Date'].apply(lambda x: x.month / MAX_MONTH)
 
@@ -133,3 +134,62 @@ def normalize_dataframe_cols(dataframe: pd.DataFrame,
                            (dataframe[col_names].max() - dataframe[col_names].min())
 
     return dataframe
+
+
+def get_rhombus(h=60, w=60):
+    tri_rtc = np.fromfunction(lambda i, j: i >= j, (h // 2, w // 2), dtype=int)
+    tri_ltc = np.flip(tri_rtc, axis=1)
+    rhombus = np.vstack(
+        (np.hstack((tri_ltc, tri_rtc[:, 0:])), np.flip(np.hstack((tri_ltc, tri_rtc[:, 0:])), axis=0)[0:, :]))
+
+    return torch.tensor(rhombus, dtype=torch.float32)
+
+
+class Rhombus(object):
+    def __call__(self, images):
+        rhombus = get_rhombus().unsqueeze(dim=0).expand_as(images)
+        images = images * rhombus
+
+        return images
+
+
+class PermuteImages(object):
+    def __call__(self, images):
+        return images.permute(2, 0, 1)
+
+
+class StackImages(object):
+    def __call__(self, images):
+        stacked_images = [torch.cat(images[i], dim=0) for i in range(len(images))]
+        up_image = torch.cat([stacked_images[0], stacked_images[1]], dim=1)
+        down_image = torch.cat([stacked_images[2], stacked_images[3]], dim=1)
+        image = torch.cat([up_image, down_image], dim=2)
+        return image
+
+
+class GADFTransformation(object):
+    def __init__(self, periods, pixels):
+        self.periods = periods
+        self.pixels = pixels
+        self.gadf = GramianAngularField(image_size=30, method='difference')
+
+    def __call__(self, images):
+        switch = False
+        if images[1] == 0:
+            switch = True
+        my_cm = cm.get_cmap('Spectral')
+        aggregated_images = []
+
+        for period in self.periods:
+            series = images[0][-1:0:-period][0:self.pixels]
+            # images_period = [gadf((series[:, j].squeeze())) for j in range(images[0].shape[1])]
+            # images_period = [my_cm(gadf((series[:, j].squeeze())))[:, :, :3] for j in range(images[0].shape[1])]
+            images_period = [self.gadf.fit_transform(series[:, j].reshape(1, -1)) for j in range(images[0].shape[1])]
+            images_period = [torch.Tensor(image) for image in images_period]
+
+            # if switch:
+            #    images_period = [1 - image for image in images_period]
+
+            aggregated_images.append(images_period)
+
+        return aggregated_images
