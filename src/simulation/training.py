@@ -1,12 +1,8 @@
-import math
 import pandas as pd
 from gym_anytrading.envs import Positions
 import torch
-import matplotlib.pyplot as plt
 import numpy as np
 from hurst import compute_Hc
-from scipy.stats import entropy
-
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
 
@@ -14,9 +10,6 @@ from src.simulation.environment import Environment
 def training_loop(env: Environment,
                   policy: PPO):
     step = 1
-    hit = 0
-    tot_op = 1e-5
-    tot_reward = 0
     position = 0
 
     observation = env.reset()[:, 1:]
@@ -42,7 +35,7 @@ def training_loop(env: Environment,
         profit_column = profit_column[1:]
         profit_column = np.append(profit_column, np.expand_dims(np.zeros(1), 1), axis=0)
         if position == 1 and trade_actions == 1 or position == 1 and trade_actions == 0:
-            profit_column[-2] = (new_observation[-2, 4] - last_price_long) / last_price_long * env.cap_inv
+            profit_column[-2] = (new_observation[-2, 4] - last_price_long) / last_price_long * env.wallet.cap_inv
         else:
             profit_column[-2] = 0
         packed_info = env.step([trade_actions, action_prob])
@@ -58,32 +51,21 @@ def training_loop(env: Environment,
         if position == 1 and new_position == 0:
             last_price_short = new_observation[-2, 4]
 
-        policy.buffer.is_terminals.append(packed_info[3]['done'])
+        policy.buffer.is_terminals.append(packed_info[3]['Done'])
         policy.buffer.rewards.append(packed_info[1])
         if step >= 1:
             if new_position == 0 and position == 1:
-                if packed_info[1] > 0:
-                    hit += 1
-                    tot_op += 1
-                if packed_info[1] < 0:
-                    tot_op += 1
-
-                reward = packed_info[1]
-                tot_reward += reward
 
                 print("step", step, ":")
-                print("number of completed trades:", env.tot_operation)
-                print("% of profit investments:", env.profit_trades / env.tot_operation)
-                print("tot_reward:", env._total_reward)
-
+                print(env.wallet.total_gain + env.wallet.total_loss)
                 print()
 
         if step % 90 == 0:
             policy.update()
         done = packed_info[2]
         if done:
-            pd.Series(env.wallet_series).to_csv('wallet.csv')
-            env.render_all()
+            pd.Series(env.wallet.history["WalletSeries"]).to_csv('wallet.csv')
+            env.render_performances()
             print("done")
             break
 

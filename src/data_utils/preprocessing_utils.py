@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import torch
-from matplotlib import cm
 from pyts.image import GramianAngularField
 
 MAX_WEEK_DAY = 5
@@ -174,21 +173,12 @@ class GADFTransformation(object):
         self.gadf = GramianAngularField(image_size=30, method='difference')
 
     def __call__(self, images):
-        switch = False
-        if images[1] == 0:
-            switch = True
-        my_cm = cm.get_cmap('Spectral')
         aggregated_images = []
 
         for period in self.periods:
             series = images[0][-1:0:-period][0:self.pixels]
-            # images_period = [gadf((series[:, j].squeeze())) for j in range(images[0].shape[1])]
-            # images_period = [my_cm(gadf((series[:, j].squeeze())))[:, :, :3] for j in range(images[0].shape[1])]
             images_period = [self.gadf.fit_transform(series[:, j].reshape(1, -1)) for j in range(images[0].shape[1])]
             images_period = [torch.Tensor(image) for image in images_period]
-
-            # if switch:
-            #    images_period = [1 - image for image in images_period]
 
             aggregated_images.append(images_period)
 

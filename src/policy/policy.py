@@ -5,7 +5,6 @@ import random
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
 from src.data_utils.preprocessing_utils import StackImages, PermuteImages, GADFTransformation, Rhombus
-from scipy.stats import entropy
 
 from src.models.model import resCNN
 
@@ -101,33 +100,14 @@ class PPO:
             old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs[indexes], dim=0)).detach()
             terminals = self.buffer.is_terminals[indexes]
             rewards = torch.tensor(self.buffer.rewards[indexes])
-            # self.best_rewards = max(self.best_rewards, max(list(map(abs, rewards))))
-            # rewards = rewards / self.best_rewards
+
             # Evaluating old actions and values
             logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states, info=old_infos,
                                                                         action=old_actions)
 
-            """
-            hurst_exponents = [old_infos[t, 1].item() for t in range(len(rewards) - 1)]
-            mean_hurst = sum(hurst_exponents) / len(hurst_exponents)
-            eps = 1 - entropy([mean_hurst, 1 - mean_hurst], base=2)
-            """
             returns = []
             future_gae = 0
             for t in reversed(range(len(rewards) - 1)):
-                """
-                delta = rewards[t] + ((1 - entropy([old_infos[t, 1].item(), (1 - old_infos[t, 1].item())], base=2))
-                                      if (not (terminals[t])) else 1.0) * state_values[t + 1] * int(
-                    not (terminals[t])) - \
-                        state_values[t]
-                gaes = future_gae = delta + (
-                        1 - entropy([old_infos[t, 1].item(), (1 - old_infos[t, 1].item())], base=2)) * 0.99 * int(
-                    not (terminals[t])) * future_gae
-                returns.insert(0, gaes + state_values[t])
-                # Reinitialization of future_gae at the beginning of a new episode
-                future_gae *= int(not (terminals[t]))
-                """
-
                 delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
                 gaes = future_gae = delta + self.gamma * 0.99 * int(not (terminals[t])) * future_gae
                 returns.insert(0, gaes + state_values[t])
@@ -135,7 +115,6 @@ class PPO:
                 future_gae *= int(not (terminals[t]))
 
             # Normalizing the rewards
-            # returns = [r / max(list(map(abs, returns))) for r in returns]
             rewards = torch.tensor(returns, dtype=torch.float32)
             rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
             # match state_values tensor dimensions with rewards tensor

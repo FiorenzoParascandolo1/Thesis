@@ -1,8 +1,6 @@
 from typing import Optional
 import torch
-from scipy.stats import entropy
 from torch.nn import functional as F
-import matplotlib.pyplot as plt
 from torch import nn
 
 
@@ -179,41 +177,11 @@ class NonLocalBlock(nn.Module):
         return z
 
 
-class Residual(nn.Module):
-    """The Residual block of ResNet."""
-
-    def __init__(self, input_shape, input_channels, num_channels, strides=(1, 1), use_1x1conv=True):
-        super().__init__()
-
-        self.conv1 = LocallyConnected2d(input_shape, input_channels, num_channels,
-                                        kernel_size=(3, 3), stride=strides, padding=1)
-        self.conv2 = LocallyConnected2d([int(input_shape / 2), int(input_shape / 2)], input_channels, num_channels,
-                                        kernel_size=(3, 3), stride=1)
-        if use_1x1conv:
-            self.conv3 = nn.Conv2d(input_channels, num_channels,
-                                   kernel_size=(1, 1), stride=strides)
-        else:
-            self.conv3 = None
-        # self.non_local = NonLocalBlock(num_channels)
-
-    def forward(self, X):
-        Y = F.relu(self.conv1(X))
-        Y = self.conv2(Y)
-
-        if self.conv3:
-            X = self.conv3(X)
-        Y += F.relu(X)
-        # Y = self.non_local(Y)
-
-        return Y
-
-
 class resCNN(nn.Module):
     def __init__(self, actor=True):
         super().__init__()
         self.actor = actor
 
-        # self.nl = NonLocalBlock(6)
         self.b0 = LocallyConnected2d(input_channels=6,
                                      num_channels=32,
                                      input_size=(60, 60),
@@ -222,21 +190,11 @@ class resCNN(nn.Module):
                                      num_channels=64,
                                      input_size=(20, 20),
                                      kernel_size=(2, 2), strides=(2, 2))
-        # self.bn1 = nn.BatchNorm2d(32)
         self.b2 = LocallyConnected2d(input_channels=64,
                                      num_channels=128,
                                      input_size=(10, 10),
                                      kernel_size=(5, 5), strides=(5, 5))
-        # self.bn2 = nn.BatchNorm2d(64)
-        """
-        self.b3 = LocallyConnected2d(input_channels=128,
-                                     num_channels=256,
-                                     input_size=(10, 10),
-                                     kernel_size=(5, 5), strides=(5, 5))
-        """
-        # self.bn3 = nn.BatchNorm2d(128)
 
-        # self.linear_1 = nn.Linear(512, 1)
         if self.actor:
             self.classifier = nn.Linear(514, 2)
         else:
@@ -247,29 +205,11 @@ class resCNN(nn.Module):
             x = x.unsqueeze(dim=0)
         if len(info.shape) == 1:
             info = info.unsqueeze(dim=1)
-        """
 
-        x = torch.cat([x[:, :, 0:30, 0:30],
-                       x[:, :, 0:30, 30:60],
-                       x[:, :, 30:60, 0:30],
-                       x[:, :, 30:60, 30:60]], dim=3)
-        plt.imshow(x[0, 0:3, :, :].permute(1, 2, 0).detach().numpy())
-        plt.show()
-        x = torch.tanh(self.nl(x))
-        x = torch.cat([torch.cat([x[:, :, 0:30, 0:30],
-                                  x[:, :, 0:30, 30:60]], dim=3),
-                       torch.cat([x[:, :, 0:30, 60:90],
-                                  x[:, :, 0:30, 90:120]], dim=3)
-                       ], dim=2)
-        plt.imshow(x[0, 0:3, :, :].permute(1, 2, 0).detach().numpy())
-        plt.show()
-        """
         x = torch.tanh(self.b0(x))
         x = torch.tanh(self.b1(x))
         x = torch.tanh(self.b2(x))
-        # x = F.leaky_relu(self.b3(x))
         x = torch.flatten(x, start_dim=1)
-        # x = F.leaky_relu(F.dropout(self.linear_1(x), p=0.5))
         x = torch.cat((x, info), dim=1)
         x = self.classifier(x)
 

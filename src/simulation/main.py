@@ -45,12 +45,12 @@ def main():
 
     df = pd.concat(dfs)
     df.to_csv("IBM.csv")
-    """
     df_1 = pd.read_csv("IBM.csv")
     df_2 = pd.read_csv("wallet.csv")
     pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize'] - 1):(df_1.shape[0])]),
                   'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
-    """
+
+
     df = yf.download(tickers=params['Ticker'],
                      period=params['Period'],
                      interval=params['Interval'],
@@ -59,14 +59,24 @@ def main():
                      prepost=True,
                      threads=True,
                      proxy=None)
- 
-    env = Environment(df=df,
+    """
+
+    df = pd.read_csv("IBM.csv")
+    env = Environment(df=df.iloc[:8200],
                       window_size=params['WindowSize'],
                       frame_bound=(params['WindowSize'], len(df)),
-                      wallet=params['Wallet'])
+                      starting_wallet=params['Wallet'])
     policy = PPO(params)
     training_loop(env=env, policy=policy)
-   """
+    """
+    df_1 = pd.read_csv("IBM.csv")
+    df_2 = pd.read_csv("wallet.csv")
+    print(len(list(df_1['close'].iloc[(params['WindowSize']):(df_1.shape[0])])))
+    print(len(df_2['0'].iloc[:]))
+    pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize']):(df_1.shape[0] - 1)]),
+                  'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
+    """
+
 
 if __name__ == "__main__":
     main()
