@@ -11,7 +11,7 @@ params = {
     'Period': "10y",
     'Interval': "1d",
     'EnvType': "stocks-v0",
-    'WindowSize': 8102,
+    'WindowSize': 8101,
     'Lr': 1e-4,
     'Periods': [1, 12, 54, 270],
     'Pixels': 30,
@@ -62,19 +62,20 @@ def main():
     """
 
     df = pd.read_csv("IBM.csv")
-    env = Environment(df=df.iloc[:8200],
+    env = Environment(df=df,
                       window_size=params['WindowSize'],
                       frame_bound=(params['WindowSize'], len(df)),
                       starting_wallet=params['Wallet'])
     policy = PPO(params)
     training_loop(env=env, policy=policy)
+
     """
     df_1 = pd.read_csv("IBM.csv")
-    df_2 = pd.read_csv("wallet.csv")
+    df_2 = pd.read_csv("report.csv")
     print(len(list(df_1['close'].iloc[(params['WindowSize']):(df_1.shape[0])])))
-    print(len(df_2['0'].iloc[:]))
-    pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize']):(df_1.shape[0] - 1)]),
-                  'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
+    print(len(df_2['WalletSeries'].iloc[:]))
+    pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize'] - 1):(df_1.shape[0] - 1)]),
+                  'Wallet': df_2['WalletSeries'].iloc[:]}).to_csv("ibm_close_wallet.csv")
     """
 
 

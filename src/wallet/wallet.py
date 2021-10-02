@@ -56,8 +56,6 @@ class Wallet(object):
                 (action == Actions.Buy.value and current_position == Positions.Long):
             equity_ts_step = (self.total_reward + (last_price - price_enter) / price_enter * self.cap_inv) \
                              / self.starting_wallet
-            if equity_ts_step > 1:
-                equity_ts_step -= 1
             pl_step = (last_price - price_enter) / price_enter * self.cap_inv
             wallet_step = self.wallet + (last_price - price_enter) / price_enter * self.cap_inv
             if action == Actions.Sell.value and current_position == Positions.Long:
@@ -86,8 +84,6 @@ class Wallet(object):
             wallet_step = self.wallet
 
         equity_benchmark_step = (last_price - self.starting_price_benchmark) / self.starting_price_benchmark
-        if equity_benchmark_step > 1:
-            equity_benchmark_step -= 1
 
         return equity_ts_step, equity_benchmark_step, pl_step, wallet_step, step_position
 
@@ -118,7 +114,7 @@ class Wallet(object):
             "Win Rate: %.2f" % ((self.profit_trades / self.tot_operation) * 100) + ' ~ ' +
             "W/L ratio: %.2f" % ((self.total_gain / self.profit_trades)
                                  / (abs(self.total_loss) / (self.tot_operation - self.profit_trades))) + ' ~ ' +
-            "Sharpe Ratio: %.2f" % (((self.wallet - self.starting_wallet) / self.starting_wallet + 0.012) /
+            "Sharpe Ratio: %.2f" % (((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) /
                                     np.std(self.history["EquityTradingSystem"])) + ' ~ ' +
             "MDD: %.2f" % max_dd(self.history["WalletSeries"])
 
@@ -143,13 +139,12 @@ class Wallet(object):
         ax1.set_xlabel('Step')
         ax1.set_ylabel('Price')
 
-        benchmark, = ax2.plot(np.arange(len(self.history["EquityBenchmark"])),
-                              list(map(lambda x: x * 100, self.history["EquityBenchmark"])))
+        benchmark, = ax2.plot(np.arange(len(self.history["EquityBenchmark"])), self.history["EquityBenchmark"])
         trading_system, = ax2.plot(np.arange(len(self.history["EquityTradingSystem"])),
-                                   list(map(lambda x: x * 100, self.history["EquityTradingSystem"])))
-        ax2.title.set_text('Equity Line (%)')
+                                   self.history["EquityTradingSystem"])
+        ax2.title.set_text('Equity Line')
         ax2.legend([benchmark, trading_system], ["Benchmark", "Trading System"])
         ax2.set_xlabel('Step')
-        ax2.set_ylabel('Equity')
+        ax2.set_ylabel('Equity (wallet_step / wallet_0)')
 
         plt.show()

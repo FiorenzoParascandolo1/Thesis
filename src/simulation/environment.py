@@ -7,7 +7,7 @@ def my_process_data(env):
     start = env.frame_bound[0] - env.window_size
     end = env.frame_bound[1]
     prices = env.df.loc[:, 'close'].to_numpy()[start:end]
-    signal_features = env.df.loc[:, ['time', 'open', 'high', 'low', 'volume', 'close']].to_numpy()[start:end]
+    signal_features = env.df.loc[:, ['open', 'high', 'low', 'volume', 'close']].to_numpy()[start:end]
     return prices, signal_features
 
 
