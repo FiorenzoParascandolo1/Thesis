@@ -5,6 +5,7 @@ import yfinance as yf
 import requests
 import pandas as pd
 import time
+import datetime
 
 params = {
     'Ticker': ["CCL"],
@@ -20,7 +21,7 @@ params = {
     'LenMemory': 451,
     'Horizon': 45,
     'UpdateTimestamp': 10,
-    'Wallet': 100000}
+    'Wallet': 86340}
 
 
 def main():
@@ -33,7 +34,7 @@ def main():
     for i in reversed(range(1, 3)):
         for j in reversed(range(1, 13)):
             with requests.Session() as s:
-                CSV_URL = 'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol=IBM&' \
+                CSV_URL = 'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol=TSLA&' \
                           f'interval=5min&slice=year{i}month{j}&apikey=LM33S122HKMP08J2'
                 download = s.get(CSV_URL)
                 decoded_content = download.content.decode('utf-8')
@@ -41,16 +42,18 @@ def main():
                 my_list = list(cr)
                 dfs.append(pd.DataFrame(reversed(my_list[1:]), columns=my_list[0]).reset_index())
                 print(pd.DataFrame(reversed(my_list[1:]), columns=my_list[0]).head())
-                time.sleep(30)
+                time.sleep(15)
 
     df = pd.concat(dfs)
-    df.to_csv("IBM.csv")
+    df.to_csv("TSLA.csv")
+    """
+    """
     df_1 = pd.read_csv("IBM.csv")
     df_2 = pd.read_csv("wallet.csv")
     pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize'] - 1):(df_1.shape[0])]),
                   'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
-
-
+    """
+    """
     df = yf.download(tickers=params['Ticker'],
                      period=params['Period'],
                      interval=params['Interval'],
@@ -60,8 +63,10 @@ def main():
                      threads=True,
                      proxy=None)
     """
-
-    df = pd.read_csv("IBM.csv")
+    # df = pd.read_csv("Binance_SOLUSDT_minute.csv",
+    #                 low_memory=False).iloc[::-1]
+    # df = df.iloc[0:len(df):5]
+    df = pd.read_csv("TSLA.csv")
     env = Environment(df=df,
                       window_size=params['WindowSize'],
                       frame_bound=(params['WindowSize'], len(df)),

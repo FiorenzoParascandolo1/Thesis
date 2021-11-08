@@ -2,29 +2,61 @@ from typing import Optional
 import torch
 from torch.nn import functional as F
 from torch import nn
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class LocallyConnected2d(nn.Module):
-    def __init__(self, input_channels, num_channels, input_size, kernel_size=(3, 3), strides=(1, 1)):
+    """
+    Implementation of Locally Connected 2d conv layer.
+    https://prateekvjoshi.com/2016/04/12/understanding-locally-connected-layers-in-convolutional-neural-networks/
+    TODO: the class actually works iff kernel_size = stride. Extend for the case kernel_size != stride
+    TODO: evaluate to add skip connection
+    """
+    def __init__(self,
+                 input_channels: int,
+                 num_channels: int,
+                 input_size: tuple,
+                 kernel_size: tuple,
+                 strides: tuple) -> None:
+        """
+        :param input_channels: number of input channels.
+        :param num_channels: number of output channels.
+        :param input_size: input image size (W, H)
+        :param kernel_size:
+        :param strides:
+        :return:
+        """
         super().__init__()
+        # Compute height output size
         self.H_out = int((input_size[0] - (kernel_size[0] - 1) - 1) / strides[0]) + 1
+        # Compute width output size
         self.W_out = int((input_size[1] - (kernel_size[1] - 1) - 1) / strides[1]) + 1
         self.stride = strides
         self.kernel_size = kernel_size
+        # Matrix of convolutional layer W_out X H_out
         self.convs = nn.ModuleList([nn.ModuleList([nn.Conv2d(in_channels=input_channels,
                                                              out_channels=num_channels,
                                                              kernel_size=kernel_size,
                                                              stride=(1, 1)) for _ in range(self.W_out)]) for _ in
                                     range(self.H_out)])
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        :param x: input tensor.
+        :return: probability for each action if actor, state_value else
+        """
+
+        # Apply convolutional layer for each spatial location
         y = [[self.convs[i][j](x[:, :,
                                (i * self.kernel_size[0]):(i * self.kernel_size[0] + self.kernel_size[0]),
                                (j * self.kernel_size[1]):(j * self.kernel_size[1] + self.kernel_size[1])])
               for j in range(self.W_out)]
              for i in range(self.H_out)]
 
+        # Concatenate the activations produced by the different convolutional layers
         y = torch.cat([torch.cat(y[i], dim=3) for i in range(self.H_out)], dim=2)
+
         return y
 
 
@@ -39,7 +71,7 @@ class NonLocalBlock(nn.Module):
                  inter_channels: Optional[int] = None,
                  mode: str = 'gaussian',
                  dimension: int = 2,
-                 bn_layer: bool = False):
+                 bn_layer: bool = False) -> None:
         """
         :param in_channels: original channel size (1024 in the paper)
         :param inter_channels: channel size inside the block if not specified reduced to half (512 in the paper)
@@ -81,31 +113,31 @@ class NonLocalBlock(nn.Module):
             conv_nd = nn.Conv1d
             bn = nn.BatchNorm1d
 
-        # function g in the paper which goes through conv. with kernel size 1
+        # Function g in the paper which goes through conv. with kernel size 1
         self.g = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels,
                          kernel_size=kernel_size_dimension[dimension])
 
-        # add BatchNorm layer after the last conv layer
+        # Add BatchNorm layer after the last conv layer
         if bn_layer:
             self.w_z = nn.Sequential(
                 conv_nd(in_channels=self.inter_channels, out_channels=self.in_channels,
                         kernel_size=kernel_size_dimension[dimension]),
                 bn(self.in_channels)
             )
-            # from section 4.1 of the paper, initializing params of BN ensures that the initial state of non-local
-            # block is identity mapping
+            # From section 4.1 of the paper, initializing params of BN ensures that the initial state of non-local
+            # Block is identity mapping
             # nn.init.constant_(self.w_z[1].weight, 0)
             # nn.init.constant_(self.w_z[1].bias, 0)
         else:
             self.w_z = conv_nd(in_channels=self.inter_channels, out_channels=self.in_channels,
                                kernel_size=kernel_size_dimension[dimension])
 
-            # from section 3.3 of the paper by initializing Wz to 0, this block can be inserted to any existing
+            # From section 3.3 of the paper by initializing Wz to 0, this block can be inserted to any existing
             # architecture
-            # nn.init.constant_(self.w_z.weight, 0)
-            # nn.init.constant_(self.w_z.bias, 0)
+            nn.init.constant_(self.w_z.weight, 0)
+            nn.init.constant_(self.w_z.bias, 0)
 
-        # define theta and phi for all operations except gaussian
+        # Define theta and phi for all operations except gaussian
         if self.mode == "embedded" or self.mode == "dot" or self.mode == "concatenate":
             self.theta = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels,
                                  kernel_size=kernel_size_dimension[dimension])
@@ -128,7 +160,7 @@ class NonLocalBlock(nn.Module):
         batch_size = x.size(0)
 
         # (N, C, THW)
-        # this reshaping and permutation is from the spacetime_nonlocal function in the original Caffe2 implementation
+        # This reshaping and permutation is from the spacetime_nonlocal function in the original Caffe2 implementation
         g_x = self.g(x).view(batch_size, self.inter_channels, -1)
         g_x = g_x.permute(0, 2, 1)
 
@@ -160,28 +192,37 @@ class NonLocalBlock(nn.Module):
         if self.mode == "gaussian" or self.mode == "embedded":
             f_dic_c = F.softmax(f, dim=-1)
         elif self.mode == "dot" or self.mode == "concatenate":
-            # number of position in x
+            # Number of position in x
             n = f.shape[-1]
             f_dic_c = f / n
 
         y = torch.matmul(f_dic_c, g_x)
 
-        # contiguous here just allocates contiguous chunk of memory
+        # Contiguous here just allocates contiguous chunk of memory
         y = y.permute(0, 2, 1).contiguous()
         y = y.view(batch_size, self.inter_channels, *x.size()[2:])
 
         w_y = self.w_z(y)
-        # residual connection
+        # Residual connection
         z = w_y + x
 
         return z
 
 
 class resCNN(nn.Module):
-    def __init__(self, actor=True):
+    """
+    Neural network architecture used for actor/critic
+    """
+    def __init__(self,
+                 actor=True) -> None:
+        """
+        :param actor: actor influences the output size: if actor -> output_size = |action_space|, 1 otherwise.
+        :return:
+        """
         super().__init__()
-        self.actor = actor
 
+        # TODO: change name; add hyperparameters for kernel_size, strides, number of layers, action space cardinality
+        self.actor = actor
         self.b0 = LocallyConnected2d(input_channels=6,
                                      num_channels=32,
                                      input_size=(60, 60),
@@ -195,17 +236,35 @@ class resCNN(nn.Module):
                                      input_size=(10, 10),
                                      kernel_size=(5, 5), strides=(5, 5))
 
-        if self.actor:
-            self.classifier = nn.Linear(514, 2)
-        else:
-            self.classifier = nn.Linear(514, 1)
+        """
+        self.b0 = nn.Conv2d(6, 32, kernel_size=(3, 3), stride=(3, 3))
+        self.b1 = nn.Conv2d(32, 64, kernel_size=(2, 2), stride=(2, 2))
+        self.b2 = nn.Conv2d(64, 128, kernel_size=(5, 5), stride=(5, 5))
+        """
 
-    def forward(self, x, info):
+        # The actor neural network returns the probability for each action
+        if self.actor:
+            self.classifier = nn.Linear(516, 2)
+        # The critic neural network return the state-value
+        else:
+            self.classifier = nn.Linear(516, 1)
+
+    def forward(self,
+                x: torch.Tensor,
+                info: torch. Tensor) -> torch.Tensor:
+        """
+        :param x: GAF images tensor.
+        :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
+        :return: probability for each action if actor; state_value otherwise.
+        TODO: encapsulate 'info' in 'x' somehow
+        """
+
         if len(x.shape) == 3:
             x = x.unsqueeze(dim=0)
         if len(info.shape) == 1:
             info = info.unsqueeze(dim=1)
-
+        # plt.imshow(x[0, :3, :, :].detach().permute(1, 2, 0).numpy())
+        # plt.show()
         x = torch.tanh(self.b0(x))
         x = torch.tanh(self.b1(x))
         x = torch.tanh(self.b2(x))
