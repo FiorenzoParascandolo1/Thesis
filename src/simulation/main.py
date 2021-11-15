@@ -1,3 +1,4 @@
+from src.data_utils.preprocessing_utils import add_features_on_time
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
 from src.simulation.training import training_loop
@@ -21,7 +22,7 @@ params = {
     'LenMemory': 451,
     'Horizon': 45,
     'UpdateTimestamp': 10,
-    'Wallet': 86340}
+    'Wallet': 870000}
 
 
 def main():
@@ -34,7 +35,7 @@ def main():
     for i in reversed(range(1, 3)):
         for j in reversed(range(1, 13)):
             with requests.Session() as s:
-                CSV_URL = 'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol=TSLA&' \
+                CSV_URL = 'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY_EXTENDED&symbol=CCL&' \
                           f'interval=5min&slice=year{i}month{j}&apikey=LM33S122HKMP08J2'
                 download = s.get(CSV_URL)
                 decoded_content = download.content.decode('utf-8')
@@ -45,7 +46,7 @@ def main():
                 time.sleep(15)
 
     df = pd.concat(dfs)
-    df.to_csv("TSLA.csv")
+    df.to_csv("CCL.csv")
     """
     """
     df_1 = pd.read_csv("IBM.csv")
@@ -53,27 +54,17 @@ def main():
     pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize'] - 1):(df_1.shape[0])]),
                   'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
     """
-    """
-    df = yf.download(tickers=params['Ticker'],
-                     period=params['Period'],
-                     interval=params['Interval'],
-                     group_by='ticker',
-                     auto_adjust=True,
-                     prepost=True,
-                     threads=True,
-                     proxy=None)
-    """
-    # df = pd.read_csv("Binance_SOLUSDT_minute.csv",
-    #                 low_memory=False).iloc[::-1]
-    # df = df.iloc[0:len(df):5]
+
     df = pd.read_csv("TSLA.csv")
+    df = add_features_on_time(df)
+    df = df[df.volume != 0]
+
     env = Environment(df=df,
                       window_size=params['WindowSize'],
                       frame_bound=(params['WindowSize'], len(df)),
                       starting_wallet=params['Wallet'])
     policy = PPO(params)
     training_loop(env=env, policy=policy)
-
     """
     df_1 = pd.read_csv("IBM.csv")
     df_2 = pd.read_csv("report.csv")

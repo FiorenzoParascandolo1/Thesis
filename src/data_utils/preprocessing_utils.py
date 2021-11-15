@@ -2,16 +2,19 @@ import pandas as pd
 import numpy as np
 import torch
 from pyts.image import GramianAngularField
+from datetime import datetime
+import matplotlib.pyplot as plt
 
 MAX_WEEK_DAY = 5
 MAX_MONTH_DAY = 31
 MAX_MONTH = 12
+MAX_HOUR = 23
+MAX_MINUTE = 55
 
 
 def period_arc_cos(x):
     """
     Compute the elements required for GADF/GASF transformations
-
     :param x: time series to be processed.
     :return: the arccos of the rescaled time series.
     """
@@ -21,7 +24,6 @@ def period_arc_cos(x):
 def rescaling(x):
     """
     Rescale a time series in [0, 1] range
-
     :param x: time series to be processed.
     :return: rescaled time series.
     """
@@ -32,7 +34,6 @@ def gasf(x):
     """
     The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
     GASF = [cos(θi + θj)]
-
     :param x: time series to be processed.
     :return: GASF matrix.
     """
@@ -43,7 +44,6 @@ def gadf(x):
     """
     The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
     GADF = [sin(θi - θj)]
-
     :param x: time series to be processed.
     :return: GADF matrix.
     """
@@ -61,9 +61,12 @@ def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     :return: processed dataframe.
     """
 
-    dataframe['WeekDay'] = dataframe['Date'].apply(lambda x: (x.weekday() + 1) / MAX_WEEK_DAY)
-    dataframe['MonthDay'] = dataframe['Date'].apply(lambda x: x.day / MAX_MONTH_DAY)
-    dataframe['Month'] = dataframe['Date'].apply(lambda x: x.month / MAX_MONTH)
+    time_series = dataframe['time'].apply(datetime.fromisoformat)
+    dataframe['WeekDay'] = time_series.apply(lambda x: (x.weekday() + 1) / MAX_WEEK_DAY)
+    dataframe['MonthDay'] = time_series.apply(lambda x: x.day / MAX_MONTH_DAY)
+    dataframe['Month'] = time_series.apply(lambda x: x.month / MAX_MONTH)
+    dataframe['Hour'] = time_series.apply(lambda x: x.hour / MAX_HOUR)
+    dataframe['Minute'] = time_series.apply(lambda x: x.minute / MAX_MINUTE)
 
     return dataframe
 
@@ -156,6 +159,7 @@ class Rhombus(object):
     Application-based transformation (multiplication) of each input image by a diamond that can be added in the
     torch-transform pipeline.
     """
+
     def __call__(self, images):
         """
         :param images: GAF image.
@@ -172,6 +176,7 @@ class PermuteImages(object):
     """
     Permute tensor images according to PyTorch convention.
     """
+
     def __call__(self, images: torch.tensor) -> torch.Tensor:
         """
         :param images: GAF image.
@@ -185,6 +190,7 @@ class StackImages(object):
     Stack sub-images to obtain the final composed image described in:
     https://www.iris.unina.it/retrieve/handle/11588/807057/337910/IEEE_CAA_Journal_of_Automatica_Sinica-3.pdf
     """
+
     def __call__(self, images: list) -> torch.Tensor:
         """
         :param images: list of GAF images.
@@ -220,11 +226,10 @@ class GADFTransformation(object):
         self.pixels = pixels
         self.gadf = GramianAngularField(image_size=30, method='difference')
 
-    def __call__(self, images: tuple) -> list:
+    def __call__(self, images: pd.Series) -> list:
         """
         :param images: (dataframe containing OLHCV features, last position).
         :return: list of GAF images for each period
-
         TODO: directly pass the dataframe as 'images' because last_position is no longer used
         """
         aggregated_images = []
@@ -232,10 +237,10 @@ class GADFTransformation(object):
         # For each period the list of each GAF image (created for each feature) is appended to aggregated_images
         for period in self.periods:
             # Extract the sub-time series according to period and pixels
-            series = images[0][-1:0:-period][0:self.pixels]
+            series = images[-1:0:-period][0:self.pixels]
             # Apply GADF transformation to each sub-time series for each feature
             images_period = [torch.Tensor(self.gadf.fit_transform(series[:, j].reshape(1, -1)))
-                             for j in range(images[0].shape[1])]
+                             for j in range(images.shape[1])]
             aggregated_images.append(images_period)
 
         # Given n periods, return a list of n-elements. Each element is a list of GADF image

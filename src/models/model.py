@@ -43,8 +43,8 @@ class LocallyConnected2d(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        :param x: input tensor.
-        :return: probability for each action if actor, state_value else
+        :param x: input tensor
+        :return: activation
         """
 
         # Apply convolutional layer for each spatial location
@@ -221,9 +221,9 @@ class resCNN(nn.Module):
         """
         super().__init__()
 
-        # TODO: change name; add hyperparameters for kernel_size, strides, number of layers, action space cardinality
+        # TODO: change name; add hyper parameters for kernel_size, strides, number of layers, action space cardinality
         self.actor = actor
-        self.b0 = LocallyConnected2d(input_channels=6,
+        self.b0 = LocallyConnected2d(input_channels=5,
                                      num_channels=32,
                                      input_size=(60, 60),
                                      kernel_size=(3, 3), strides=(3, 3))
@@ -244,21 +244,20 @@ class resCNN(nn.Module):
 
         # The actor neural network returns the probability for each action
         if self.actor:
-            self.classifier = nn.Linear(516, 2)
+            self.classifier = nn.Linear(521, 2)
         # The critic neural network return the state-value
         else:
-            self.classifier = nn.Linear(516, 1)
+            self.classifier = nn.Linear(521, 1)
 
     def forward(self,
                 x: torch.Tensor,
                 info: torch. Tensor) -> torch.Tensor:
         """
-        :param x: GAF images tensor.
-        :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
-        :return: probability for each action if actor; state_value otherwise.
+        :param x: GAF images tensor
+        :param info: info tensor
+        :return: probability for each action if actor; state_value otherwise
         TODO: encapsulate 'info' in 'x' somehow
         """
-
         if len(x.shape) == 3:
             x = x.unsqueeze(dim=0)
         if len(info.shape) == 1:

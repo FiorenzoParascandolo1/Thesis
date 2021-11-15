@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import random
-
-from scipy.stats import entropy
+import pandas as pd
+import math
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
 from src.data_utils.preprocessing_utils import StackImages, PermuteImages, GADFTransformation, Rhombus
@@ -51,14 +51,41 @@ class RolloutBuffer(object):
         """
         Extract a consecutive sample of elements from the buffer according to the time horizon considered
         """
-        head = random.randint(self.horizon, len(self.rewards))
+        head = random.randint(self.horizon, len(self.rewards) - 1)
         return slice(head - self.horizon, head, 1)
+
+
+class Image_transformer(object):
+    def __init__(self,
+                 periods: list,
+                 pixels: int):
+        """
+        Class to manage transformation of time-series into images
+
+        :param periods: time periods considered
+        :param pixels: number of pixels
+        :return:
+        """
+        self.transform = transforms.Compose([GADFTransformation(periods=periods,
+                                                                pixels=pixels),
+                                             StackImages()])
+        self.max_list = [0 for _ in range(5)]
+        self.min_list = [math.inf for _ in range(5)]
+
+    def generate_image(self,
+                       series: pd.Series) -> torch.Tensor:
+
+        self.max_list = [max(self.max_list[j], max(series[:, j])) for j in range(5)]
+        self.min_list = [min(self.min_list[j], min(series[:, j])) for j in range(5)]
+
+        return self.transform((series, self.max_list, self.min_list))
 
 
 class ActorCritic(nn.Module):
     """
     Actor-Critic neural networks used in PPO
     """
+
     def __init__(self):
         super(ActorCritic, self).__init__()
         self.actor = resCNN()
@@ -90,8 +117,8 @@ class ActorCritic(nn.Module):
         Actor network is used to compute the action probs in order to produce action_logprobs and dist_entropy
         used at training time. Critic network is used to compute the state values used at training time
 
-        :param state: GAF image tensor.
-        :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
+        :param state: GAF image tensor
+        :param info: info tensor
         :param action: the chosen action
         :return: tuple of information used at training time
         TODO: encapsulate 'info' in 'x' somehow
@@ -108,8 +135,9 @@ class ActorCritic(nn.Module):
 class PPO:
     """
     https://arxiv.org/pdf/1707.06347.pdf
-    TODO: manage better hyperparameters
+    TODO: manage better hyper parameters
     """
+
     def __init__(self,
                  params: dict):
 
@@ -123,13 +151,17 @@ class PPO:
         self.policy_old = ActorCritic()
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.policy_old.eval()
+        """
+        self.transform = Image_transformer(pixels=params['Pixels'],
+                                           periods=params['Periods'])
+        """
         self.transform = transforms.Compose([GADFTransformation(periods=params['Periods'],
                                                                 pixels=params['Pixels']),
                                              StackImages()])
         self.MseLoss = nn.MSELoss()
 
     def select_action(self,
-                      state: torch.Tensor,
+                      state: pd.Series,
                       info: torch.Tensor) -> tuple:
         """
         Actor network is used to act in the environment. Information used at training time are stored in memory.
@@ -140,10 +172,12 @@ class PPO:
         to calculate the amount of capital to be allocated
         TODO: encapsulate 'info' in 'x' somehow
         """
-        with torch.no_grad():
-            action, action_logprob, action_prob = self.policy_old.act(state, info)
 
-        self.buffer.states.append(state)
+        observation = self.transform(state)
+        with torch.no_grad():
+            action, action_logprob, action_prob = self.policy_old.act(observation, info)
+
+        self.buffer.states.append(observation)
         self.buffer.infos.append(info)
         self.buffer.actions.append(action)
         self.buffer.logprobs.append(action_logprob)
@@ -166,14 +200,15 @@ class PPO:
             rewards = torch.tensor(self.buffer.rewards[indexes])
 
             # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states, info=old_infos,
+            logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
+                                                                        info=old_infos,
                                                                         action=old_actions)
 
             returns = []
             future_gae = 0
             for t in reversed(range(len(rewards) - 1)):
                 delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
-                gaes = future_gae = delta + self.gamma * 0.99 * int(not(terminals[t])) * future_gae
+                gaes = future_gae = delta + self.gamma * 0.99 * int(not (terminals[t])) * future_gae
                 returns.insert(0, gaes + state_values[t])
                 # Reinitialization of future_gae at the beginning of a new episode
                 future_gae *= int(not (terminals[t]))

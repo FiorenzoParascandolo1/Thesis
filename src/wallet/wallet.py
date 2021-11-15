@@ -2,6 +2,7 @@ from gym_anytrading.envs import Actions, Positions
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import math
 
 
 def max_dd(wallet_series: pd.Series) -> float:
@@ -19,7 +20,7 @@ def max_dd(wallet_series: pd.Series) -> float:
 
 class Wallet(object):
     """
-    It stores info for perfromances
+    It stores info for performances
     """
     def __init__(self, wallet, starting_price, compute_commissions):
         super().__init__()
@@ -167,7 +168,7 @@ class Wallet(object):
         shares_long = 0
         if ((action[0] == Actions.Sell.value and current_position == Positions.Long)
                 or (action[0] == Actions.Buy.value and current_position == Positions.Short)):
-            self.cap_inv = action[1][0][action[0]].item() * self.wallet
+            self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / 0.34) * self.wallet
             # If you were Short and the chosen action is Buy
             if action[0] == Actions.Buy.value and current_position == Positions.Short:
                 # Update number of shares
