@@ -5,7 +5,7 @@ import pandas as pd
 import math
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
-from src.data_utils.preprocessing_utils import StackImages, PermuteImages, GADFTransformation, Rhombus
+from src.data_utils.preprocessing_utils import StackImages, PermuteImages, GADFTransformation, Rhombus, ManageSymmetries
 
 from src.models.model import resCNN
 
@@ -157,6 +157,7 @@ class PPO:
         """
         self.transform = transforms.Compose([GADFTransformation(periods=params['Periods'],
                                                                 pixels=params['Pixels']),
+                                             ManageSymmetries(pixels=params['Pixels']),
                                              StackImages()])
         self.MseLoss = nn.MSELoss()
 

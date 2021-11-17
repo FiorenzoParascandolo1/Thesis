@@ -13,16 +13,16 @@ params = {
     'Period': "10y",
     'Interval': "1d",
     'EnvType': "stocks-v0",
-    'WindowSize': 8101,
+    'WindowSize': 242,
     'Lr': 1e-4,
-    'Periods': [1, 12, 54, 270],
+    'Periods': [1, 2, 3, 4, 5, 6, 7, 8],
     'Pixels': 30,
     'EpsClip': 0.1,
     'Gamma': 0.99,
     'LenMemory': 451,
     'Horizon': 45,
     'UpdateTimestamp': 10,
-    'Wallet': 870000}
+    'Wallet': 129562}
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
                   'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
     """
 
-    df = pd.read_csv("TSLA.csv")
+    df = pd.read_csv("IBM.csv")
     df = add_features_on_time(df)
     df = df[df.volume != 0]
 

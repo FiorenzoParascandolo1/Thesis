@@ -197,16 +197,59 @@ class StackImages(object):
         :return: final stacked GAF image.
         """
 
-        # Stack tensors of different features for each period considered
-        stacked_images = [torch.cat(images[i], dim=0) for i in range(len(images))]
         # Concatenate the first two sub-images along the columns
-        up_image = torch.cat([stacked_images[0], stacked_images[1]], dim=1)
+        up_image = torch.cat([images[0], images[1]], dim=1)
         # Concatenate the other two sub-images along the columns
-        down_image = torch.cat([stacked_images[2], stacked_images[3]], dim=1)
+        down_image = torch.cat([images[2], images[3]], dim=1)
         # Concatenate 'up' and 'down' images along the rows
         image = torch.cat([up_image, down_image], dim=2)
 
         return image
+
+
+class ManageSymmetries(object):
+    """
+    Solves symmetry of GAF images by representing two periods per image
+    """
+
+    def __init__(self,
+                 pixels):
+        """
+        :param pixels: number of pixels per image
+        :return:
+        """
+
+        """
+        Example symmetry_odd for pixels = 5
+        1 0 0 0 0 
+        1 1 0 0 0 
+        1 1 1 0 0 
+        1 1 1 1 0 
+        1 1 1 1 1
+        """
+        self.symmetry_odd = torch.tensor(np.concatenate([np.expand_dims(np.fromfunction(lambda i, j: i >= j,
+                                                                           (pixels, pixels),
+                                                                           dtype=int), axis=0)] * 5, axis=0))
+        """
+        Example symmetry_even for pixels = 5
+        1 1 1 1 0
+        1 1 1 0 0 
+        1 1 0 0 0 
+        1 0 0 0 0 
+        0 0 0 0 0 
+        """
+        self.symmetry_even = torch.tensor(np.concatenate([np.expand_dims(np.fromfunction(lambda i, j: i < j,
+                                                                                         (pixels, pixels), dtype=int),
+                                                                         axis=0) * 5], axis=0))
+
+    def __call__(self,
+                 images: list) -> list:
+        """
+        :param images: list of GAF images.
+        :return: list of images preprocessed considering symmetries
+        """
+        return [images[i] * self.symmetry_odd + images[i + 1] * self.symmetry_even
+                for i in range(0, len(images) - 1, 2)]
 
 
 class GADFTransformation(object):
@@ -214,7 +257,9 @@ class GADFTransformation(object):
     A Gramian angular field is an image obtained from a time series, representing some kind of temporal correlation
     between each pair of values from the time series.
     """
-    def __init__(self, periods: list,
+
+    def __init__(self,
+                 periods: list,
                  pixels: int):
 
         """
@@ -226,22 +271,45 @@ class GADFTransformation(object):
         self.pixels = pixels
         self.gadf = GramianAngularField(image_size=30, method='difference')
 
-    def __call__(self, images: pd.Series) -> list:
+    def manage_periods(self,
+                       series: pd.Series,
+                       period: int) -> pd.DataFrame:
         """
-        :param images: (dataframe containing OLHCV features, last position).
+        :param series: time-series observation.
+        :param period: period is used to aggregate time series information in order to create a less granular one
+        :return: the new time-series created
+        TODO: check high, low, volume
+        """
+        if period == 1:
+            return pd.DataFrame(series[-1:0:-period][0:self.pixels])
+        close = series[:, 4][-1:0:-period][0:self.pixels]
+        open = series[:, 0][-period:0:-period][0:self.pixels]
+        high = pd.Series([max(series[:, 1][(-period * (i + 1)):(-period * i + 1 if i != 0 else None)])
+                          for i in range(self.pixels)])
+        low = pd.Series([max(series[:, 2][(-period * (i + 1)):(-period * i + 1 if i != 0 else None)])
+                         for i in range(self.pixels)])
+        volume = pd.Series([sum(series[:, 3][(-period * (i + 1)):(-period * i + 1 if i != 0 else None)])
+                            for i in range(self.pixels)])
+
+        return pd.DataFrame({'1': open, '2': high, '3': low, '4': volume, '5': close})
+
+    def __call__(self,
+                 images: pd.Series) -> list:
+        """
+        :param images: dataframe containing OLHCV features
         :return: list of GAF images for each period
-        TODO: directly pass the dataframe as 'images' because last_position is no longer used
         """
         aggregated_images = []
 
         # For each period the list of each GAF image (created for each feature) is appended to aggregated_images
         for period in self.periods:
+            series = self.manage_periods(series=images, period=period)
             # Extract the sub-time series according to period and pixels
-            series = images[-1:0:-period][0:self.pixels]
+            # series = images[-1:0:-period][0:self.pixels]
             # Apply GADF transformation to each sub-time series for each feature
-            images_period = [torch.Tensor(self.gadf.fit_transform(series[:, j].reshape(1, -1)))
+            images_period = [torch.Tensor(self.gadf.fit_transform(np.array(series.iloc[:, j]).reshape(1, -1)))
                              for j in range(images.shape[1])]
             aggregated_images.append(images_period)
 
         # Given n periods, return a list of n-elements. Each element is a list of GADF image
-        return aggregated_images
+        return [torch.cat(aggregated_images[i], dim=0) for i in range(len(aggregated_images))]
