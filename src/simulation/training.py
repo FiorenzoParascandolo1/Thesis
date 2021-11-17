@@ -1,22 +1,24 @@
 import pandas as pd
 from gym_anytrading.envs import Positions
-import torch
-import numpy as np
-from hurst import compute_Hc
+from src.data_utils.preprocessing_utils import add_features_on_time
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
 
 
-def training_loop(env: Environment,
-                  policy: PPO):
+def training_loop(params: dict):
     """
     Training loop for experiments.
-    param env:
-    param policy:
+    param dict: hyper parameters
     returns:
-
-    TODO: evaluate the possibility to use Hurst like GAF image
     """
+    df = add_features_on_time(pd.read_csv(params["FileName"]))
+    df = df[df.volume != 0]
+
+    env = Environment(df=df,
+                      window_size=params['WindowSize'],
+                      frame_bound=(params['WindowSize'], len(df)),
+                      starting_wallet=params['Wallet'])
+    policy = PPO(params)
 
     step = 1
     position = 0
@@ -46,7 +48,7 @@ def training_loop(env: Environment,
                       "commission_paid:", env.wallet.tot_commissions)
 
         # Update the policy
-        if step % 90 == 0:
+        if step % params['UpdateTimestamp'] == 0:
             policy.update()
 
         done = packed_info[2]

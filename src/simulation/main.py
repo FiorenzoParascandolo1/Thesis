@@ -1,17 +1,10 @@
-from src.data_utils.preprocessing_utils import add_features_on_time
-from src.policy.policy import PPO
-from src.simulation.environment import Environment
 from src.simulation.training import training_loop
 import yfinance as yf
 import requests
-import pandas as pd
-import time
-import datetime
+
 
 params = {
-    'Ticker': ["CCL"],
-    'Period': "10y",
-    'Interval': "1d",
+    'FileName': "TSLA.csv",
     'EnvType': "stocks-v0",
     'WindowSize': 242,
     'Lr': 1e-4,
@@ -21,7 +14,7 @@ params = {
     'Gamma': 0.99,
     'LenMemory': 451,
     'Horizon': 45,
-    'UpdateTimestamp': 10,
+    'UpdateTimestamp': 90,
     'Wallet': 129562}
 
 
@@ -54,17 +47,7 @@ def main():
     pd.DataFrame({'Close': list(df_1['close'].iloc[(params['WindowSize'] - 1):(df_1.shape[0])]),
                   'Wallet': df_2['0'].iloc[:]}).to_csv("ibm_close_wallet.csv")
     """
-
-    df = pd.read_csv("IBM.csv")
-    df = add_features_on_time(df)
-    df = df[df.volume != 0]
-
-    env = Environment(df=df,
-                      window_size=params['WindowSize'],
-                      frame_bound=(params['WindowSize'], len(df)),
-                      starting_wallet=params['Wallet'])
-    policy = PPO(params)
-    training_loop(env=env, policy=policy)
+    training_loop(params)
     """
     df_1 = pd.read_csv("IBM.csv")
     df_2 = pd.read_csv("report.csv")
