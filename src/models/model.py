@@ -126,8 +126,8 @@ class NonLocalBlock(nn.Module):
             )
             # From section 4.1 of the paper, initializing params of BN ensures that the initial state of non-local
             # Block is identity mapping
-            # nn.init.constant_(self.w_z[1].weight, 0)
-            # nn.init.constant_(self.w_z[1].bias, 0)
+            nn.init.constant_(self.w_z[1].weight, 0)
+            nn.init.constant_(self.w_z[1].bias, 0)
         else:
             self.w_z = conv_nd(in_channels=self.inter_channels, out_channels=self.in_channels,
                                kernel_size=kernel_size_dimension[dimension])
