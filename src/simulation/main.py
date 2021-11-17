@@ -4,18 +4,28 @@ import requests
 
 
 params = {
+    # Environment
     'FileName': "TSLA.csv",
     'EnvType': "stocks-v0",
-    'WindowSize': 242,
-    'Lr': 1e-4,
+
+    # Environment - observation
     'Periods': [1, 2, 3, 4, 5, 6, 7, 8],
     'Pixels': 30,
-    'EpsClip': 0.1,
+
+    # Policy
+    'Lr': 1e-4,
     'Gamma': 0.99,
+    'Lambda': 0.99,
     'LenMemory': 451,
     'Horizon': 45,
     'UpdateTimestamp': 90,
-    'Wallet': 129562}
+    'EpsClip': 0.1,
+    'ValueLossCoefficient': 0.5,
+    'EntropyLossCoefficient': 0.01,
+
+    # Wallet
+    'WalletFactor': 1000,
+    'BetSizeFactor': 0.34}
 
 
 def main():

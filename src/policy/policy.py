@@ -5,9 +5,9 @@ import pandas as pd
 import math
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
-from src.data_utils.preprocessing_utils import StackImages, PermuteImages, GADFTransformation, Rhombus, ManageSymmetries
+from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManageSymmetries
 
-from src.models.model import resCNN
+from src.models.model import LocallyConnectedNetwork
 
 
 class RolloutBuffer(object):
@@ -40,12 +40,12 @@ class RolloutBuffer(object):
         :return:
         """
         if len(self.actions) == self.len_memory or clear:
-            del self.actions[:]
-            del self.states[:]
-            del self.infos[:]
-            del self.logprobs[:]
-            del self.rewards[:]
-            del self.is_terminals[:]
+            del self.actions[:-1]
+            del self.states[:-1]
+            del self.infos[:-1]
+            del self.logprobs[:-1]
+            del self.rewards[:-1]
+            del self.is_terminals[:-1]
 
     def generate_index(self) -> slice:
         """
@@ -74,7 +74,6 @@ class Image_transformer(object):
 
     def generate_image(self,
                        series: pd.Series) -> torch.Tensor:
-
         self.max_list = [max(self.max_list[j], max(series[:, j])) for j in range(5)]
         self.min_list = [min(self.min_list[j], min(series[:, j])) for j in range(5)]
 
@@ -88,8 +87,8 @@ class ActorCritic(nn.Module):
 
     def __init__(self):
         super(ActorCritic, self).__init__()
-        self.actor = resCNN()
-        self.critic = resCNN(actor=False)
+        self.actor = LocallyConnectedNetwork()
+        self.critic = LocallyConnectedNetwork(actor=False)
 
     def act(self,
             state: torch.Tensor,
@@ -143,6 +142,9 @@ class PPO:
 
         self.gamma = params['Gamma']
         self.eps_clip = params['EpsClip']
+        self.values_loss_coefficient = params['ValueLossCoefficient']
+        self.entropy_loss_coefficient = params['EntropyLossCoefficient']
+        self.lmbda = params['Lambda']
         self.buffer = RolloutBuffer(params['LenMemory'], params['Horizon'])
         self.policy = ActorCritic()
         self.optimizer = torch.optim.Adam([
@@ -209,7 +211,7 @@ class PPO:
             future_gae = 0
             for t in reversed(range(len(rewards) - 1)):
                 delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
-                gaes = future_gae = delta + self.gamma * 0.99 * int(not (terminals[t])) * future_gae
+                gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
                 returns.insert(0, gaes + state_values[t])
                 # Reinitialization of future_gae at the beginning of a new episode
                 future_gae *= int(not (terminals[t]))
@@ -228,8 +230,9 @@ class PPO:
             surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
 
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2).mean() + 0.5 * self.MseLoss(state_values[:-1], rewards) \
-                   - 0.01 * dist_entropy[:-1].mean()
+            loss = -torch.min(surr1, surr2).mean() \
+                   + self.values_loss_coefficient * self.MseLoss(state_values[:-1], rewards) \
+                   - self.entropy_loss_coefficient * dist_entropy[:-1].mean()
             # take gradient step
             self.optimizer.zero_grad()
             loss.backward(retain_graph=True)

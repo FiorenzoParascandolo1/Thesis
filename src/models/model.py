@@ -209,7 +209,7 @@ class NonLocalBlock(nn.Module):
         return z
 
 
-class resCNN(nn.Module):
+class LocallyConnectedNetwork(nn.Module):
     """
     Neural network architecture used for actor/critic
     """

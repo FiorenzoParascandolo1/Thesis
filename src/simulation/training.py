@@ -13,11 +13,12 @@ def training_loop(params: dict):
     """
     df = add_features_on_time(pd.read_csv(params["FileName"]))
     df = df[df.volume != 0]
-
+    window_size = params['Periods'][-1] * params['Pixels'] + 2
     env = Environment(df=df,
-                      window_size=params['WindowSize'],
-                      frame_bound=(params['WindowSize'], len(df)),
-                      starting_wallet=params['Wallet'])
+                      window_size=window_size,
+                      frame_bound=(window_size, len(df)),
+                      starting_wallet=df['close'].iloc[window_size - 1] * params['WalletFactor'],
+                      bet_size_factor=params['BetSizeFactor'])
     policy = PPO(params)
 
     step = 1

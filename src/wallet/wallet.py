@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import math
 
 
-def max_dd(wallet_series: pd.Series) -> float:
+def max_dd(wallet_series: list) -> float:
     """
     Compute Maximum Draw Down
     :param wallet_series: time-series of the wallet
@@ -22,7 +22,18 @@ class Wallet(object):
     """
     It stores info for performances
     """
-    def __init__(self, wallet, starting_price, compute_commissions):
+    def __init__(self,
+                 wallet,
+                 starting_price,
+                 bet_size_factor,
+                 compute_commissions):
+        """
+        :param wallet: amount of starting wallet
+        :param starting_price: the close price of the first observation (used to compute benchmark performances)
+        :param bet_size_factor: factor to increase (reduce) the bet size
+        :param compute_commissions: function for computing commissions
+        :return
+        """
         super().__init__()
         self.history = {"EquityTradingSystem": [],
                         "EquityBenchmark": [],
@@ -34,6 +45,7 @@ class Wallet(object):
         self.wallet = self.starting_wallet
         self.cap_inv = 0.5 * self.starting_wallet
         self.starting_price_benchmark = starting_price
+        self.bet_size_factor = bet_size_factor
         self.total_reward = 0
         self.tot_operation = 0
         self.profit_trades = 0
@@ -50,7 +62,7 @@ class Wallet(object):
              reward_step: float,
              shares_months: int):
         """
-        Perform wallet step to update infos
+        Perform wallet step to update info
 
         :param action: (action, action_prob)
         :param price_enter: enter price of the last transition Short.Position -> Buy
@@ -168,7 +180,7 @@ class Wallet(object):
         shares_long = 0
         if ((action[0] == Actions.Sell.value and current_position == Positions.Long)
                 or (action[0] == Actions.Buy.value and current_position == Positions.Short)):
-            self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / 0.34) * self.wallet
+            self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
             # If you were Short and the chosen action is Buy
             if action[0] == Actions.Buy.value and current_position == Positions.Short:
                 # Update number of shares
