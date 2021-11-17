@@ -2,7 +2,6 @@ from src.simulation.training import training_loop
 import yfinance as yf
 import requests
 
-
 params = {
     # Environment
     'FileName': "TSLA.csv",

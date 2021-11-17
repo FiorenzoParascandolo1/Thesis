@@ -3,6 +3,7 @@ from gym_anytrading.envs import Positions
 from src.data_utils.preprocessing_utils import add_features_on_time
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
+import wandb
 
 
 def training_loop(params: dict):
@@ -11,6 +12,9 @@ def training_loop(params: dict):
     param dict: hyper parameters
     returns:
     """
+    wandb.init(project="trading_system", entity="fiorenzoparascandolo")
+    wandb.config = params
+
     df = add_features_on_time(pd.read_csv(params["FileName"]))
     df = df[df.volume != 0]
     window_size = params['Periods'][-1] * params['Pixels'] + 2
@@ -19,7 +23,7 @@ def training_loop(params: dict):
                       frame_bound=(window_size, len(df)),
                       starting_wallet=df['close'].iloc[window_size - 1] * params['WalletFactor'],
                       bet_size_factor=params['BetSizeFactor'])
-    policy = PPO(params)
+    policy = PPO(params, wandb)
 
     step = 1
     position = 0

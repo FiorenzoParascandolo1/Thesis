@@ -138,7 +138,8 @@ class PPO:
     """
 
     def __init__(self,
-                 params: dict):
+                 params: dict,
+                 wandb):
 
         self.gamma = params['Gamma']
         self.eps_clip = params['EpsClip']
@@ -162,6 +163,7 @@ class PPO:
                                              ManageSymmetries(pixels=params['Pixels']),
                                              StackImages()])
         self.MseLoss = nn.MSELoss()
+        self.wandb = wandb
 
     def select_action(self,
                       state: pd.Series,
@@ -229,10 +231,13 @@ class PPO:
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
 
+            policy_loss = -torch.min(surr1, surr2).mean()
+            value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], rewards)
+            entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2).mean() \
-                   + self.values_loss_coefficient * self.MseLoss(state_values[:-1], rewards) \
-                   - self.entropy_loss_coefficient * dist_entropy[:-1].mean()
+            loss = policy_loss + value_loss + entropy_loss
+            self.wandb.log({"policy_loss": policy_loss.item(),
+                            "value_loss": value_loss.item()})
             # take gradient step
             self.optimizer.zero_grad()
             loss.backward(retain_graph=True)
