@@ -15,7 +15,7 @@ def training_loop(params: dict):
     """
     wandb.init(project="trading_system", entity="fiorenzoparascandolo", config=params)
 
-    df = add_features_on_time(pd.read_csv(params["FileName"])).iloc[:500]
+    df = add_features_on_time(pd.read_csv(params["FileName"]))
     df = df[df.volume != 0]
     window_size = params['Periods'][-1] * params['Pixels'] + 2
     env = Environment(df=df,

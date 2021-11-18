@@ -8,8 +8,8 @@ params = {
     'EnvType': "stocks-v0",
 
     # Environment - observation
-    'Periods': [1, 2, 3, 4],
-    'Pixels': 30,
+    'Periods': [20, 80, 320, 960],
+    'Pixels': 20,
     'ManageSymmetries': False,
 
     # Policy
