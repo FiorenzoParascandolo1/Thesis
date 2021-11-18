@@ -4,6 +4,7 @@ from src.data_utils.preprocessing_utils import add_features_on_time
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
 import wandb
+import time
 
 
 def training_loop(params: dict):

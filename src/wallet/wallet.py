@@ -217,19 +217,29 @@ class Wallet(object):
         """
         fig, (ax1, ax2) = plt.subplots(2)
 
+        total_percent_profit = (self.wallet - self.starting_wallet) / self.starting_wallet * 100
+        win_rate = (self.profit_trades / self.tot_operation) * 100
+        w_l_ratio = (self.total_gain / self.profit_trades) \
+                    / (abs(self.total_loss) / (self.tot_operation - self.profit_trades))
+        sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
+                       / np.std(self.history["EquityTradingSystem"])
+        mdd = max_dd(self.history["WalletSeries"])
+
+        self.wandb.run.summary["Total_Percent_Profit"] = total_percent_profit
+        self.wandb.run.summary["Win_Rate"] = total_percent_profit
+        self.wandb.run.summary["Win_Loss_Ratio"] = total_percent_profit
+        self.wandb.run.summary["Sharpe_Ratio"] = sharpe_ratio
+        self.wandb.run.summary["Maximum_Drawdown"] = mdd
+
         fig.suptitle(
             "Total Reward: %.2f" % self.total_reward + ' ~ ' +
             "Total Commission: %.2f" % self.tot_commissions + ' ~ ' +
-            "Total Percent Profit: %.2f" % ((self.wallet - self.starting_wallet) / self.starting_wallet * 100) + ' ~ ' +
+            "Total Percent Profit: %.2f" % total_percent_profit + ' ~ ' +
             "Number of trades: %d" % self.tot_operation + ' ~ ' +
-            "Win Rate: %.2f" % ((self.profit_trades / self.tot_operation) * 100) + ' ~ ' +
-            "W/L ratio: %.2f" % ((self.total_gain / self.profit_trades)
-                                 / (abs(self.total_loss) / (self.tot_operation - self.profit_trades))) + ' ~ ' +
-            "Sharpe Ratio: %.2f" % (((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) /
-                                    np.std(self.history["EquityTradingSystem"])) + ' ~ ' +
-            "MDD: %.2f" % max_dd(self.history["WalletSeries"])
-
-        )
+            "Win Rate: %.2f" % win_rate + ' ~ ' +
+            "W/L ratio: %.2f" % w_l_ratio + ' ~ ' +
+            "Sharpe Ratio: %.2f" % sharpe_ratio + ' ~ ' +
+            "MDD: %.2f" % mdd)
 
         window_ticks = np.arange(len(self.history["Position"]))
         prices_test = prices
