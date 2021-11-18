@@ -5,9 +5,9 @@ import pandas as pd
 import math
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
-from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManageSymmetries
+from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManageSymmetries, IdentityTransformation
 
-from src.models.model import LocallyConnectedNetwork
+from src.models.model import LocallyConnectedNetwork, Vgg, CoordConvArchitecture
 
 
 class RolloutBuffer(object):
@@ -85,10 +85,19 @@ class ActorCritic(nn.Module):
     Actor-Critic neural networks used in PPO
     """
 
-    def __init__(self):
+    def __init__(self,
+                 pixels: int,
+                 architecture: str):
         super(ActorCritic, self).__init__()
-        self.actor = LocallyConnectedNetwork()
-        self.critic = LocallyConnectedNetwork(actor=False)
+        if architecture in ['LocallyConnected']:
+            self.actor = LocallyConnectedNetwork()
+            self.critic = LocallyConnectedNetwork(actor=False)
+        elif architecture in ['Vgg']:
+            self.actor = Vgg(pixels=pixels)
+            self.critic = Vgg(pixels=pixels, actor=False)
+        elif architecture in ['CoordConv']:
+            self.actor = CoordConvArchitecture(pixels=pixels)
+            self.critic = CoordConvArchitecture(pixels=pixels, actor=False)
 
     def act(self,
             state: torch.Tensor,
@@ -147,11 +156,10 @@ class PPO:
         self.entropy_loss_coefficient = params['EntropyLossCoefficient']
         self.lmbda = params['Lambda']
         self.buffer = RolloutBuffer(params['LenMemory'], params['Horizon'])
-        self.policy = ActorCritic()
-        self.optimizer = torch.optim.Adam([
-            {'params': self.policy.actor.parameters(), 'lr': params['Lr']},
-            {'params': self.policy.critic.parameters(), 'lr': params['Lr']}])
-        self.policy_old = ActorCritic()
+        self.policy = ActorCritic(params['Pixels'], params['Architecture'])
+        self.optimizer = torch.optim.Adam([{'params': self.policy.actor.parameters(), 'lr': params['Lr']},
+                                           {'params': self.policy.critic.parameters(), 'lr': params['Lr']}])
+        self.policy_old = ActorCritic(params['Pixels'], params['Architecture'])
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.policy_old.eval()
         """
@@ -160,7 +168,8 @@ class PPO:
         """
         self.transform = transforms.Compose([GADFTransformation(periods=params['Periods'],
                                                                 pixels=params['Pixels']),
-                                             ManageSymmetries(pixels=params['Pixels']),
+                                             ManageSymmetries(pixels=params['Pixels']) if params['ManageSymmetries']
+                                             else IdentityTransformation(),
                                              StackImages()])
         self.MseLoss = nn.MSELoss()
         self.wandb = wandb
@@ -236,8 +245,8 @@ class PPO:
             entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
             # final loss of clipped objective PPO
             loss = policy_loss + value_loss + entropy_loss
-            self.wandb.log({"policy_loss": policy_loss.item(),
-                            "value_loss": value_loss.item()})
+            self.wandb.log({"training/policy_loss": policy_loss.item(),
+                            "training/value_loss": value_loss.item()})
             # take gradient step
             self.optimizer.zero_grad()
             loss.backward(retain_graph=True)

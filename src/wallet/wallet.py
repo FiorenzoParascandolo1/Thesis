@@ -22,10 +22,12 @@ class Wallet(object):
     """
     It stores info for performances
     """
+
     def __init__(self,
                  wallet,
                  starting_price,
                  bet_size_factor,
+                 wandb,
                  compute_commissions):
         """
         :param wallet: amount of starting wallet
@@ -41,6 +43,7 @@ class Wallet(object):
                         "WalletSeries": [],
                         "Position": []}
 
+        self.wandb = wandb
         self.starting_wallet = wallet
         self.wallet = self.starting_wallet
         self.cap_inv = 0.5 * self.starting_wallet
@@ -162,6 +165,8 @@ class Wallet(object):
 
         # Update equity benchmark
         equity_benchmark_step = (last_price - self.starting_price_benchmark) / self.starting_price_benchmark
+        self.wandb.log({"metrics/equity": equity_ts_step,
+                        "metrics/equity_benchmark": equity_benchmark_step})
 
         return equity_ts_step, equity_benchmark_step, pl_step, wallet_step, step_position
 

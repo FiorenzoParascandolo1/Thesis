@@ -12,17 +12,17 @@ def training_loop(params: dict):
     param dict: hyper parameters
     returns:
     """
-    wandb.init(project="trading_system", entity="fiorenzoparascandolo")
-    wandb.config = params
+    wandb.init(project="trading_system", entity="fiorenzoparascandolo", config=params)
 
-    df = add_features_on_time(pd.read_csv(params["FileName"]))
+    df = add_features_on_time(pd.read_csv(params["FileName"])).iloc[:500]
     df = df[df.volume != 0]
     window_size = params['Periods'][-1] * params['Pixels'] + 2
     env = Environment(df=df,
                       window_size=window_size,
                       frame_bound=(window_size, len(df)),
                       starting_wallet=df['close'].iloc[window_size - 1] * params['WalletFactor'],
-                      bet_size_factor=params['BetSizeFactor'])
+                      bet_size_factor=params['BetSizeFactor'],
+                      wandb=wandb)
     policy = PPO(params, wandb)
 
     step = 1

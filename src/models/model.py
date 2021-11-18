@@ -13,6 +13,7 @@ class LocallyConnected2d(nn.Module):
     TODO: the class actually works iff kernel_size = stride. Extend for the case kernel_size != stride
     TODO: evaluate to add skip connection
     """
+
     def __init__(self,
                  input_channels: int,
                  num_channels: int,
@@ -58,6 +59,47 @@ class LocallyConnected2d(nn.Module):
         y = torch.cat([torch.cat(y[i], dim=3) for i in range(self.H_out)], dim=2)
 
         return y
+
+
+class CoordConv(nn.Module):
+    """
+    Implementation of CoordConv layer.
+    https://arxiv.org/pdf/1807.03247.pdf
+    """
+
+    def __init__(self,
+                 input_channels: int,
+                 num_channels: int,
+                 input_size: tuple,
+                 kernel_size: tuple,
+                 strides: tuple) -> None:
+        """
+        :param input_channels: number of input channels.
+        :param num_channels: number of output channels.
+        :param input_size: input image size (W, H)
+        :param kernel_size:
+        :param strides:
+        :return:
+        """
+        super().__init__()
+        self.input_size = input_size
+        self.conv = nn.Conv2d(in_channels=input_channels + 2,
+                              out_channels=num_channels,
+                              kernel_size=kernel_size,
+                              stride=strides)
+
+        self.xx_channel = (torch.arange(input_size[0]).repeat(1, input_size[1], 1).float() /
+                           (input_size[0] - 1)) * 2 - 1
+        self.yy_channel = (torch.arange(input_size[1]).repeat(1, input_size[0], 1).transpose(1, 2).float() /
+                           (input_size[1] - 1)) * 2 - 1
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        xx_channel = self.xx_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[0] != 1 else self.xx_channel.unsqueeze(dim=1)
+        yy_channel = self.yy_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[0] != 1 else self.yy_channel.unsqueeze(dim=1)
+        x = torch.cat([x,
+                       xx_channel,
+                       yy_channel], dim=1)
+        return self.conv(x)
 
 
 class NonLocalBlock(nn.Module):
@@ -213,6 +255,7 @@ class LocallyConnectedNetwork(nn.Module):
     """
     Neural network architecture used for actor/critic
     """
+
     def __init__(self,
                  actor=True) -> None:
         """
@@ -251,7 +294,7 @@ class LocallyConnectedNetwork(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                info: torch. Tensor) -> torch.Tensor:
+                info: torch.Tensor) -> torch.Tensor:
         """
         :param x: GAF images tensor
         :param info: info tensor
@@ -274,3 +317,111 @@ class LocallyConnectedNetwork(nn.Module):
         if self.actor:
             x = F.softmax(x, dim=1)
         return x
+
+
+class Vgg(nn.Module):
+
+    def __init__(self,
+                 pixels,
+                 actor=True):
+        super().__init__()
+
+        self.actor = actor
+
+        self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.MaxPool2d(kernel_size=2),
+                                     nn.Dropout(p=0.25))
+        self.stage_2 = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.MaxPool2d(kernel_size=2),
+                                     nn.Dropout(p=0.25))
+        self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.MaxPool2d(kernel_size=2))
+
+        with torch.no_grad():
+            x = torch.randn(1, 5, pixels * 2, pixels * 2)
+            x = self.stage_1(x)
+            x = self.stage_2(x)
+            x = self.stage_3(x)
+            x = torch.flatten(x, start_dim=1)
+
+        if actor:
+            self.head = nn.Linear(x.shape[1] + 9, 2)
+        else:
+            self.head = nn.Linear(x.shape[1] + 9, 1)
+
+    def forward(self, x, info):
+
+        if len(x.shape) == 3:
+            x = x.unsqueeze(dim=0)
+        if len(info.shape) == 1:
+            info = info.unsqueeze(dim=1)
+
+        x = self.stage_1(x)
+        x = self.stage_2(x)
+        x = self.stage_3(x)
+        x = torch.flatten(x, start_dim=1)
+        x = torch.cat((x, info), dim=1)
+
+        if self.actor:
+            return F.softmax(self.head(x), dim=1)
+        else:
+            return self.head(x)
+
+
+class CoordConvArchitecture(nn.Module):
+
+    def __init__(self,
+                 pixels,
+                 actor=True):
+        super().__init__()
+
+        self.actor = actor
+
+        self.stage_1 = nn.Sequential(CoordConv(input_channels=5, num_channels=32, kernel_size=(3, 3),
+                                               input_size=(pixels * 2, pixels * 2), strides=(2, 2)),
+                                     nn.ReLU())
+        self.stage_2 = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), stride=(2, 2)),
+                                     nn.ReLU())
+        self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
+                                     nn.ReLU(),
+                                     nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
+                                     nn.ReLU())
+
+        with torch.no_grad():
+            x = torch.randn(1, 5, pixels * 2, pixels * 2)
+            x = self.stage_1(x)
+            x = self.stage_2(x)
+            x = self.stage_3(x)
+            x = torch.flatten(x, start_dim=1)
+
+        if actor:
+            self.head = nn.Linear(x.shape[1] + 9, 2)
+        else:
+            self.head = nn.Linear(x.shape[1] + 9, 1)
+
+    def forward(self, x, info):
+
+        if len(x.shape) == 3:
+            x = x.unsqueeze(dim=0)
+        if len(info.shape) == 1:
+            info = info.unsqueeze(dim=1)
+
+        x = self.stage_1(x)
+        x = self.stage_2(x)
+        x = self.stage_3(x)
+        x = torch.flatten(x, start_dim=1)
+        x = torch.cat((x, info), dim=1)
+
+        if self.actor:
+            return F.softmax(self.head(x), dim=1)
+        else:
+            return self.head(x)

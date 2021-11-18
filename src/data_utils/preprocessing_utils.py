@@ -228,8 +228,9 @@ class ManageSymmetries(object):
         1 1 1 1 1
         """
         self.symmetry_odd = torch.tensor(np.concatenate([np.expand_dims(np.fromfunction(lambda i, j: i >= j,
-                                                                           (pixels, pixels),
-                                                                           dtype=int), axis=0)] * 5, axis=0))
+                                                                                        (pixels, pixels),
+                                                                                        dtype=int), axis=0)] * 5,
+                                                        axis=0))
         """
         Example symmetry_even for pixels = 5
         1 1 1 1 0
@@ -313,3 +314,16 @@ class GADFTransformation(object):
 
         # Given n periods, return a list of n-elements. Each element is a list of GADF image
         return [torch.cat(aggregated_images[i], dim=0) for i in range(len(aggregated_images))]
+
+
+class IdentityTransformation(object):
+    """
+    """
+
+    def __init__(self):
+        pass
+
+    def __call__(self, x):
+        """
+        """
+        return x

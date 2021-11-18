@@ -83,7 +83,8 @@ class Environment(StocksEnv):
                  window_size: int,
                  frame_bound: tuple,
                  starting_wallet: float,
-                 bet_size_factor: float):
+                 bet_size_factor: float,
+                 wandb):
         """
         :param df: dataframe used to compile the trading simulation
         :param window_size: Number of ticks (current and previous ticks) returned as a Gym observation.
@@ -98,6 +99,7 @@ class Environment(StocksEnv):
         self.wallet = Wallet(starting_wallet,
                              self.prices[self._start_tick - 1],
                              bet_size_factor,
+                             wandb,
                              compute_commissions)
         self.shares_months = 0
         self.month = 0

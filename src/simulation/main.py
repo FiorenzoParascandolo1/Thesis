@@ -4,14 +4,16 @@ import requests
 
 params = {
     # Environment
-    'FileName': "TSLA.csv",
+    'FileName': "IBM.csv",
     'EnvType': "stocks-v0",
 
     # Environment - observation
-    'Periods': [1, 2, 3, 4, 5, 6, 7, 8],
+    'Periods': [1, 2, 3, 4],
     'Pixels': 30,
+    'ManageSymmetries': False,
 
     # Policy
+    'Architecture': "CoordConv",
     'Lr': 1e-4,
     'Gamma': 0.99,
     'Lambda': 0.99,
