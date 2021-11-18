@@ -328,7 +328,7 @@ class Vgg(nn.Module):
 
         self.actor = actor
 
-        self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3)),
+        self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3), stride=(2, 2)),
                                      nn.ReLU(),
                                      nn.MaxPool2d(kernel_size=2),
                                      nn.Dropout(p=0.25))
@@ -341,8 +341,7 @@ class Vgg(nn.Module):
         self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
                                      nn.ReLU(),
                                      nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3)),
-                                     nn.ReLU(),
-                                     nn.MaxPool2d(kernel_size=2))
+                                     nn.ReLU())
 
         with torch.no_grad():
             x = torch.randn(1, 5, pixels * 2, pixels * 2)
