@@ -270,7 +270,7 @@ class GADFTransformation(object):
         """
         self.periods = periods
         self.pixels = pixels
-        self.gadf = GramianAngularField(image_size=30, method='difference')
+        self.gadf = GramianAngularField(image_size=pixels, method='difference')
 
     def manage_periods(self,
                        series: pd.Series,
