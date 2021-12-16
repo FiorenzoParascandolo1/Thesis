@@ -6,6 +6,7 @@ import math
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
 from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManageSymmetries, IdentityTransformation
+from scipy.stats import entropy
 
 from src.models.model import LocallyConnectedNetwork, Vgg, CoordConvArchitecture
 
@@ -51,33 +52,9 @@ class RolloutBuffer(object):
         """
         Extract a consecutive sample of elements from the buffer according to the time horizon considered
         """
+
         head = random.randint(self.horizon, len(self.rewards) - 1)
         return slice(head - self.horizon, head, 1)
-
-
-class Image_transformer(object):
-    def __init__(self,
-                 periods: list,
-                 pixels: int):
-        """
-        Class to manage transformation of time-series into images
-
-        :param periods: time periods considered
-        :param pixels: number of pixels
-        :return:
-        """
-        self.transform = transforms.Compose([GADFTransformation(periods=periods,
-                                                                pixels=pixels),
-                                             StackImages()])
-        self.max_list = [0 for _ in range(5)]
-        self.min_list = [math.inf for _ in range(5)]
-
-    def generate_image(self,
-                       series: pd.Series) -> torch.Tensor:
-        self.max_list = [max(self.max_list[j], max(series[:, j])) for j in range(5)]
-        self.min_list = [min(self.min_list[j], min(series[:, j])) for j in range(5)]
-
-        return self.transform((series, self.max_list, self.min_list))
 
 
 class ActorCritic(nn.Module):
@@ -109,8 +86,8 @@ class ActorCritic(nn.Module):
         :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
         :return: the chosen action, action_log_prob used during the training, action probs used
         to calculate the amount of capital to be allocated
-        TODO: encapsulate 'info' in 'x' somehow
         """
+
         action_probs = self.actor(state, info)
         dist = Categorical(action_probs)
         action = dist.sample()
@@ -129,7 +106,6 @@ class ActorCritic(nn.Module):
         :param info: info tensor
         :param action: the chosen action
         :return: tuple of information used at training time
-        TODO: encapsulate 'info' in 'x' somehow
         """
         action_probs = self.actor(state, info)
         dist = Categorical(action_probs)
@@ -155,6 +131,7 @@ class PPO:
         self.values_loss_coefficient = params['ValueLossCoefficient']
         self.entropy_loss_coefficient = params['EntropyLossCoefficient']
         self.lmbda = params['Lambda']
+        self.epochs = params['Epochs']
         self.buffer = RolloutBuffer(params['LenMemory'], params['Horizon'])
         self.policy = ActorCritic(params['Pixels'], params['Architecture'])
         self.optimizer = torch.optim.Adam([{'params': self.policy.actor.parameters(), 'lr': params['Lr']},
@@ -184,7 +161,6 @@ class PPO:
         :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
         :return: the choosen action to act in the environment, action probs used
         to calculate the amount of capital to be allocated
-        TODO: encapsulate 'info' in 'x' somehow
         """
 
         observation = self.transform(state)
@@ -205,6 +181,10 @@ class PPO:
         if len(self.buffer.actions) > self.buffer.horizon:
             indexes = self.buffer.generate_index()
 
+            policy_loss_wandb = 0
+            value_loss_wandb = 0
+            entropy_loss_wandb = 0
+
             # convert list to tensor
             old_states = torch.squeeze(torch.stack(self.buffer.states[indexes], dim=0)).detach()
             old_infos = torch.squeeze(torch.stack(self.buffer.infos[indexes], dim=0)).detach()
@@ -213,49 +193,77 @@ class PPO:
             terminals = self.buffer.is_terminals[indexes]
             rewards = torch.tensor(self.buffer.rewards[indexes])
 
-            # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
-                                                                        info=old_infos,
-                                                                        action=old_actions)
+            for i in range(self.epochs):
 
-            returns = []
-            future_gae = 0
-            for t in reversed(range(len(rewards) - 1)):
-                delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
-                gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
-                returns.insert(0, gaes + state_values[t])
-                # Reinitialization of future_gae at the beginning of a new episode
-                future_gae *= int(not (terminals[t]))
-            rewards = torch.tensor(returns, dtype=torch.float32)
+                # Evaluating old actions and values
+                logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
+                                                                            info=old_infos,
+                                                                            action=old_actions)
 
-            # Normalizing the rewards
-            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-            # match state_values tensor dimensions with rewards tensor
-            state_values = torch.squeeze(state_values)
-            # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs[:-1] - old_logprobs[:-1].detach())
+                returns = []
+                future_gae = 0
+                for t in reversed(range(len(rewards) - 1)):
+                    delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
+                    gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
+                    returns.insert(0, gaes + state_values[t])
+                    # Reinitialization of future_gae at the beginning of a new episode
+                    future_gae *= int(not (terminals[t]))
+                returns = torch.tensor(returns, dtype=torch.float32)
 
-            # Finding Surrogate Loss
-            advantages = rewards - state_values[:-1].detach()
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+                # Normalizing the rewards
+                returns = (returns - returns.mean()) / (returns.std() + 1e-7)
+                # match state_values tensor dimensions with rewards tensor
+                state_values = torch.squeeze(state_values)
+                # Finding the ratio (pi_theta / pi_theta__old)
+                ratios = torch.exp(logprobs[:-1] - old_logprobs[:-1].detach())
+                # Finding Surrogate Loss
+                advantages = returns - state_values[:-1].detach()
+                surr1 = ratios * advantages
+                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
 
-            policy_loss = -torch.min(surr1, surr2).mean()
-            value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], rewards)
-            entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
-            # final loss of clipped objective PPO
-            loss = policy_loss + value_loss + entropy_loss
-            self.wandb.log({"training/policy_loss": policy_loss.item(),
-                            "training/value_loss": value_loss.item()})
-            # take gradient step
-            self.optimizer.zero_grad()
-            loss.backward(retain_graph=True)
-            self.optimizer.step()
+                policy_loss = -torch.min(surr1, surr2).mean()
+                value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], returns)
+                entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
+                # final loss of clipped objective PPO
+                loss = policy_loss + value_loss + entropy_loss
+
+                # take gradient step
+                self.optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                self.optimizer.step()
+
+                policy_loss_wandb += policy_loss.item()
+                value_loss_wandb += value_loss.item()
+                entropy_loss_wandb += entropy_loss.item()
+
+            self.wandb.log({"training/policy_loss": policy_loss_wandb / self.epochs,
+                            "training/value_loss": value_loss_wandb / self.epochs,
+                            "training/entropy_loss": entropy_loss_wandb / self.epochs})
+
             # Copy new weights into old policy
             self.policy_old.load_state_dict(self.policy.state_dict())
 
         # clear buffer
         self.buffer.clear()
+
+    def update_memory_for_finite_trajectories(self,
+                                              new_position: int,
+                                              last_price: float,
+                                              new_price: float,
+                                              cap_inv: float):
+
+        self.buffer.infos.append(self.buffer.infos[-1])
+        self.buffer.logprobs.append(self.buffer.logprobs[-1])
+        self.buffer.states.append(self.buffer.states[-1])
+        self.buffer.actions.append(self.buffer.actions[-1])
+        self.buffer.is_terminals.append(False)
+
+        if new_position == 1:
+            self.buffer.rewards.append((new_price - last_price) /
+                                       last_price * cap_inv)
+        else:
+            self.buffer.rewards.append((last_price - new_price) /
+                                       last_price * cap_inv)
 
     def scheduler(self,
                   lr: float) -> None:

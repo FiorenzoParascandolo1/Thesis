@@ -13,6 +13,10 @@ def max_dd(wallet_series: list) -> float:
     cumulative_returns = pd.Series(wallet_series)
     highwatermarks = cumulative_returns.cummax()
     drawdowns = 1 - (1 + cumulative_returns) / (1 + highwatermarks)
+
+    if len(drawdowns) == 0:
+        return 0
+
     max_drawdown = max(drawdowns)
 
     return max_drawdown * 100
@@ -41,6 +45,7 @@ class Wallet(object):
                         "EquityBenchmark": [],
                         "ProfitLoss": [],
                         "WalletSeries": [],
+                        "BenchmarkSeries": [],
                         "Position": []}
 
         self.wandb = wandb
@@ -75,7 +80,7 @@ class Wallet(object):
         :param shares_months: number of shares traded in the current month
         :return: info
         """
-        equity_ts_step, equity_benchmark_step, pl_step, wallet_step, step_position = \
+        equity_ts_step, equity_benchmark_step, pl_step, wallet_step, benchmark_step, step_position = \
             self._compute_info(action[0], price_enter, last_price, current_position, reward_step, shares_months)
 
         shares_long = self._update_cap_inv(action, current_position, last_price)
@@ -85,9 +90,32 @@ class Wallet(object):
             EquityBenchmark=equity_benchmark_step,
             ProfitLoss=pl_step,
             WalletSeries=wallet_step,
+            BenchmarkSeries=benchmark_step,
             Position=step_position)
 
         self._update_history(info)
+
+        std_deviation = np.std(self.history["EquityTradingSystem"])
+
+        if std_deviation == 0:
+            sharpe_ratio = 0
+        else:
+            sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
+                           / std_deviation
+
+        mdd = max_dd(self.history["WalletSeries"])
+
+        if mdd == 0:
+            romad = 0
+        else:
+            romad = self.history["EquityTradingSystem"][-1] / mdd * 100
+
+        self.wandb.log({"metrics/equity": equity_ts_step,
+                        "metrics/equity_benchmark": equity_benchmark_step,
+                        "metrics/std_deviation": std_deviation,
+                        "metrics/sharpe_ratio": sharpe_ratio,
+                        "metrics/mdd": mdd,
+                        "metrics/romad": romad})
 
         return info, shares_long
 
@@ -151,7 +179,7 @@ class Wallet(object):
             # Valid for the first step of the environment
             if len(self.history["EquityTradingSystem"]) == 0:
                 equity_ts_step = 0
-                step_position = 0
+                step_position = action
             else:
                 # The equity step is equal to the last equity step
                 equity_ts_step = self.history["EquityTradingSystem"][-1]
@@ -165,10 +193,9 @@ class Wallet(object):
 
         # Update equity benchmark
         equity_benchmark_step = (last_price - self.starting_price_benchmark) / self.starting_price_benchmark
-        self.wandb.log({"metrics/equity": equity_ts_step,
-                        "metrics/equity_benchmark": equity_benchmark_step})
+        benchmark_step = self.starting_wallet + self.starting_wallet * equity_benchmark_step
 
-        return equity_ts_step, equity_benchmark_step, pl_step, wallet_step, step_position
+        return equity_ts_step, equity_benchmark_step, pl_step, wallet_step, benchmark_step, step_position
 
     def _update_cap_inv(self,
                         action: tuple,
@@ -184,7 +211,8 @@ class Wallet(object):
         """
         shares_long = 0
         if ((action[0] == Actions.Sell.value and current_position == Positions.Long)
-                or (action[0] == Actions.Buy.value and current_position == Positions.Short)):
+                or (action[0] == Actions.Buy.value and current_position == Positions.Short)) \
+                or len(self.history["EquityTradingSystem"]) == 0:
             self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
             # If you were Short and the chosen action is Buy
             if action[0] == Actions.Buy.value and current_position == Positions.Short:
@@ -217,19 +245,36 @@ class Wallet(object):
         """
         fig, (ax1, ax2) = plt.subplots(2)
 
+        std_deviation = np.std(self.history["EquityTradingSystem"])
         total_percent_profit = (self.wallet - self.starting_wallet) / self.starting_wallet * 100
         win_rate = (self.profit_trades / self.tot_operation) * 100
         w_l_ratio = (self.total_gain / self.profit_trades) \
                     / (abs(self.total_loss) / (self.tot_operation - self.profit_trades))
         sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
-                       / np.std(self.history["EquityTradingSystem"])
+                       / std_deviation
         mdd = max_dd(self.history["WalletSeries"])
+        romad = total_percent_profit / mdd
+
+        std_deviation_benchmark = np.std(self.history["EquityBenchmark"])
+        benchmark_percent_profit = self.history["EquityBenchmark"][-1] * 100
+        mdd_benchmark = max_dd(self.history["BenchmarkSeries"])
+        sharpe_ratio_benchmark = ((self.history["BenchmarkSeries"][-1] - self.starting_wallet) /
+                                  self.starting_wallet + 0.00012) / std_deviation_benchmark
+        romad_benchmark = benchmark_percent_profit / mdd_benchmark
 
         self.wandb.run.summary["Total_Percent_Profit"] = total_percent_profit
-        self.wandb.run.summary["Win_Rate"] = total_percent_profit
-        self.wandb.run.summary["Win_Loss_Ratio"] = total_percent_profit
+        self.wandb.run.summary["Win_Rate"] = win_rate
+        self.wandb.run.summary["Win_Loss_Ratio"] = w_l_ratio
         self.wandb.run.summary["Sharpe_Ratio"] = sharpe_ratio
         self.wandb.run.summary["Maximum_Drawdown"] = mdd
+        self.wandb.run.summary["Romad"] = romad
+        self.wandb.run.summary["Std deviation"] = std_deviation
+
+        self.wandb.run.summary["Benchmark_Percent_Profit"] = benchmark_percent_profit
+        self.wandb.run.summary["Maximum_Drawdown_Benchmark"] = mdd_benchmark
+        self.wandb.run.summary["Sharpe_Ratio_Benchmark"] = sharpe_ratio_benchmark
+        self.wandb.run.summary["Romad_Benchmark"] = romad_benchmark
+        self.wandb.run.summary["Std deviation benchmark"] = std_deviation_benchmark
 
         fig.suptitle(
             "Total Reward: %.2f" % self.total_reward + ' ~ ' +
@@ -237,9 +282,16 @@ class Wallet(object):
             "Total Percent Profit: %.2f" % total_percent_profit + ' ~ ' +
             "Number of trades: %d" % self.tot_operation + ' ~ ' +
             "Win Rate: %.2f" % win_rate + ' ~ ' +
-            "W/L ratio: %.2f" % w_l_ratio + ' ~ ' +
+            "W/L Ratio: %.2f" % w_l_ratio + ' ~ ' +
             "Sharpe Ratio: %.2f" % sharpe_ratio + ' ~ ' +
-            "MDD: %.2f" % mdd)
+            "MDD: %.2f" % mdd + ' ~ ' +
+            "RoMaD: %.2f" % romad + ' ~ ' +
+            "Std Deviation: %.5f" % std_deviation + '\n' +
+            "Benchmark Percent Profit: %.2f" % benchmark_percent_profit + ' ~ ' +
+            "MDD Benchmark: %.2f" % mdd_benchmark + ' ~ ' +
+            "Sharpe Ratio Benchmark: %.2f" % sharpe_ratio_benchmark + ' ~ ' +
+            "RoMaD Benchmark: %.2f" % romad_benchmark + ' ~ ' +
+            "Std Deviation: %.5f" % std_deviation_benchmark)
 
         window_ticks = np.arange(len(self.history["Position"]))
         prices_test = prices

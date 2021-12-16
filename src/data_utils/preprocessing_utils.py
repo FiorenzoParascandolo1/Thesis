@@ -230,18 +230,18 @@ class ManageSymmetries(object):
         self.symmetry_odd = torch.tensor(np.concatenate([np.expand_dims(np.fromfunction(lambda i, j: i >= j,
                                                                                         (pixels, pixels),
                                                                                         dtype=int), axis=0)] * 5,
-                                                        axis=0))
+                                                        axis=0)).float()
         """
         Example symmetry_even for pixels = 5
-        1 1 1 1 0
-        1 1 1 0 0 
-        1 1 0 0 0 
-        1 0 0 0 0 
+        0 1 1 1 1
+        0 0 1 1 1 
+        0 0 0 1 1 
+        0 0 0 0 1 
         0 0 0 0 0 
         """
         self.symmetry_even = torch.tensor(np.concatenate([np.expand_dims(np.fromfunction(lambda i, j: i < j,
                                                                                          (pixels, pixels), dtype=int),
-                                                                         axis=0) * 5], axis=0))
+                                                                         axis=0)] * 5, axis=0)).float()
 
     def __call__(self,
                  images: list) -> list:
@@ -249,6 +249,22 @@ class ManageSymmetries(object):
         :param images: list of GAF images.
         :return: list of images preprocessed considering symmetries
         """
+
+        """
+        plt.imshow(images[0][2:5, :, :].detach().permute(1, 2, 0).numpy())
+        plt.show()
+        plt.imshow(self.symmetry_odd[2:5, :, :].detach().permute(1, 2, 0).numpy())
+        plt.show()
+
+        plt.imshow(images[1][2:5, :, :].detach().permute(1, 2, 0).numpy())
+        plt.show()
+        plt.imshow(self.symmetry_even[2:5, :, :].detach().permute(1, 2, 0).numpy())
+        plt.show()
+
+        plt.imshow((images[0] * self.symmetry_odd + images[0 + 1] * self.symmetry_even)[2:5, :, :].detach().permute(1, 2, 0).numpy())
+        plt.show()
+        """
+
         return [images[i] * self.symmetry_odd + images[i + 1] * self.symmetry_even
                 for i in range(0, len(images) - 1, 2)]
 
@@ -279,20 +295,19 @@ class GADFTransformation(object):
         :param series: time-series observation.
         :param period: period is used to aggregate time series information in order to create a less granular one
         :return: the new time-series created
-        TODO: check high, low, volume
         """
         if period == 1:
-            return pd.DataFrame(series[-1:0:-period][0:self.pixels])
+            return pd.DataFrame(series[-1:0:-period][0:self.pixels]).iloc[::-1]
         close = series[:, 4][-1:0:-period][0:self.pixels]
         open = series[:, 0][-period:0:-period][0:self.pixels]
-        high = pd.Series([max(series[:, 1][(-period * (i + 1)):(-period * i + 1 if i != 0 else None)])
+        high = pd.Series([max(series[:, 1][(-period * (i + 1)):(-period * i if i != 0 else None)])
                           for i in range(self.pixels)])
-        low = pd.Series([max(series[:, 2][(-period * (i + 1)):(-period * i + 1 if i != 0 else None)])
+        low = pd.Series([max(series[:, 2][(-period * (i + 1)):(-period * i if i != 0 else None)])
                          for i in range(self.pixels)])
-        volume = pd.Series([sum(series[:, 3][(-period * (i + 1)):(-period * i + 1 if i != 0 else None)])
+        volume = pd.Series([sum(series[:, 3][(-period * (i + 1)):(-period * i if i != 0 else None)])
                             for i in range(self.pixels)])
 
-        return pd.DataFrame({'1': open, '2': high, '3': low, '4': volume, '5': close})
+        return pd.DataFrame({'1': open, '2': high, '3': low, '4': volume, '5': close}).iloc[::-1]
 
     def __call__(self,
                  images: pd.Series) -> list:

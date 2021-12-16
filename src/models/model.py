@@ -83,7 +83,11 @@ class CoordConv(nn.Module):
         """
         super().__init__()
         self.input_size = input_size
-        self.conv = nn.Conv2d(in_channels=input_channels + 2,
+        self.conv1 = nn.Conv2d(in_channels=input_channels + 2,
+                               out_channels=(input_channels + 2) * 2,
+                               kernel_size=(1, 1),
+                               stride=(1, 1))
+        self.conv = nn.Conv2d(in_channels=(input_channels + 2) * 2,
                               out_channels=num_channels,
                               kernel_size=kernel_size,
                               stride=strides)
@@ -99,6 +103,7 @@ class CoordConv(nn.Module):
         x = torch.cat([x,
                        xx_channel,
                        yy_channel], dim=1)
+        x = self.conv1(x)
         return self.conv(x)
 
 
@@ -287,10 +292,10 @@ class LocallyConnectedNetwork(nn.Module):
 
         # The actor neural network returns the probability for each action
         if self.actor:
-            self.classifier = nn.Linear(521, 2)
+            self.classifier = nn.Linear(522, 2)
         # The critic neural network return the state-value
         else:
-            self.classifier = nn.Linear(521, 1)
+            self.classifier = nn.Linear(522, 1)
 
     def forward(self,
                 x: torch.Tensor,
@@ -329,19 +334,19 @@ class Vgg(nn.Module):
         self.actor = actor
 
         self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3), stride=(2, 2)),
-                                     nn.ReLU(),
+                                     nn.Tanh(),
                                      nn.MaxPool2d(kernel_size=2),
                                      nn.Dropout(p=0.25))
         self.stage_2 = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3)),
-                                     nn.ReLU(),
+                                     nn.Tanh(),
                                      nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3)),
-                                     nn.ReLU(),
+                                     nn.Tanh(),
                                      nn.MaxPool2d(kernel_size=2),
                                      nn.Dropout(p=0.25))
         self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
-                                     nn.ReLU(),
+                                     nn.Tanh(),
                                      nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3)),
-                                     nn.ReLU())
+                                     nn.Tanh())
 
         with torch.no_grad():
             x = torch.randn(1, 5, pixels * 2, pixels * 2)
@@ -351,9 +356,9 @@ class Vgg(nn.Module):
             x = torch.flatten(x, start_dim=1)
 
         if actor:
-            self.head = nn.Linear(x.shape[1] + 9, 2)
+            self.head = nn.Linear(x.shape[1] + 10, 2)
         else:
-            self.head = nn.Linear(x.shape[1] + 9, 1)
+            self.head = nn.Linear(x.shape[1] + 10, 1)
 
     def forward(self, x, info):
 
@@ -385,15 +390,15 @@ class CoordConvArchitecture(nn.Module):
 
         self.stage_1 = nn.Sequential(CoordConv(input_channels=5, num_channels=32, kernel_size=(3, 3),
                                                input_size=(pixels * 2, pixels * 2), strides=(2, 2)),
-                                     nn.ReLU())
+                                     nn.Tanh())
         self.stage_2 = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3)),
-                                     nn.ReLU(),
+                                     nn.Tanh(),
                                      nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), stride=(2, 2)),
-                                     nn.ReLU())
+                                     nn.Tanh())
         self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
-                                     nn.ReLU(),
+                                     nn.Tanh(),
                                      nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
-                                     nn.ReLU())
+                                     nn.Tanh())
 
         with torch.no_grad():
             x = torch.randn(1, 5, pixels * 2, pixels * 2)
@@ -403,9 +408,9 @@ class CoordConvArchitecture(nn.Module):
             x = torch.flatten(x, start_dim=1)
 
         if actor:
-            self.head = nn.Linear(x.shape[1] + 9, 2)
+            self.head = nn.Linear(x.shape[1] + 10, 2)
         else:
-            self.head = nn.Linear(x.shape[1] + 9, 1)
+            self.head = nn.Linear(x.shape[1] + 10, 1)
 
     def forward(self, x, info):
 

@@ -13,8 +13,9 @@ params = {
     'ManageSymmetries': False,
 
     # Policy
-    'Architecture': "CoordConv",
+    'Architecture': "LocallyConnected",
     'Lr': 1e-4,
+    'Epochs': 4,
     'Gamma': 0.99,
     'Lambda': 0.99,
     'LenMemory': 451,

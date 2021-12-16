@@ -3,6 +3,7 @@ import pandas as pd
 from hurst import compute_Hc
 from src.wallet.wallet import Wallet
 import torch
+import math
 
 
 def my_process_data(env):
@@ -51,23 +52,6 @@ def compute_commissions(cap_inv: float,
     if shares_months > 100000000:
         commissions = max(0.35, shares * 0.0005)
         commissions = min(commissions, 0.01 * cap_inv)
-    """
-    # Binance commissions
-    if shares_months < 4500:
-        commissions = 0.00075 * cap_inv
-    if 4500 <= shares_months < 10000:
-        commissions = 0.000675 * cap_inv
-    if 10000 <= shares_months < 20000:
-        commissions = 0.0006 * cap_inv
-    if 20000 <= shares_months < 40000:
-        commissions = 0.000525 * cap_inv
-    if 40000 <= shares_months < 80000:
-        commissions = 0.000450 * cap_inv
-    if 80000 <= shares_months < 150000:
-        commissions = 0.000375 * cap_inv
-    if shares_months > 150000:
-        commissions = 0.0003 * cap_inv
-    """
 
     return commissions
 
@@ -115,6 +99,9 @@ class Environment(StocksEnv):
         self.last_price_short = obs[-2, 5]
         info = self.return_info(obs)
         self.month = int(obs[-2, 0][5:7])
+        print("Start simulation", obs[-2][0])
+        print("Wallet available:", self.wallet.starting_wallet, "Last price observed:", obs[-2, 5], "Position:",
+              self._position)
         # return the dataframe except the first column because it encodes the date
         return obs[:-1, 1:6], info
 
@@ -277,17 +264,25 @@ class Environment(StocksEnv):
             p_l = (self.last_price_short - observation[-2, 5]) / self.last_price_short
 
         # Compute Hurst exponent
-        hurst = compute_Hc(observation[:-1, 5], kind='price', simplified=True)[0]
+        hurst = compute_Hc(observation[-101:-1, 5], kind='price', simplified=True)[0]
+
+        if self._position.value == 0:
+            short = 1.0
+            long = 0.0
+        else:
+            short = 0.0
+            long = 1.0
 
         return torch.tensor([p_l,
                              hurst,
                              self.shares_months / 100000000,
-                             self._position.value,
-                             observation[-1, 6],
-                             observation[-1, 7],
-                             observation[-1, 8],
-                             observation[-1, 9],
-                             observation[-1, 10]],
+                             long,
+                             short,
+                             observation[-2, 6],
+                             observation[-2, 7],
+                             observation[-2, 8],
+                             observation[-2, 9],
+                             observation[-2, 10]],
                             dtype=torch.float32).unsqueeze(dim=0)
 
     def render_performances(self):
