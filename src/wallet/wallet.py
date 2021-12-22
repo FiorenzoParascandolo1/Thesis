@@ -61,6 +61,7 @@ class Wallet(object):
         self.total_loss = 0
         self.tot_commissions = 0
         self.compute_commissions = compute_commissions
+        self.last_position = 0
 
     def step(self,
              action: tuple,
@@ -95,27 +96,27 @@ class Wallet(object):
 
         self._update_history(info)
 
-        std_deviation = np.std(self.history["EquityTradingSystem"])
+        self.std_deviation = np.std(self.history["EquityTradingSystem"])
 
-        if std_deviation == 0:
-            sharpe_ratio = 0
+        if self.std_deviation == 0:
+            self.sharpe_ratio = 0.00
         else:
-            sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
-                           / std_deviation
+            self.sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
+                           / self.std_deviation
 
-        mdd = max_dd(self.history["WalletSeries"])
+        self.mdd = max_dd(self.history["WalletSeries"])
 
-        if mdd == 0:
-            romad = 0
+        if self.mdd == 0:
+            self.romad = 0.00
         else:
-            romad = self.history["EquityTradingSystem"][-1] / mdd * 100
+            self.romad = ((self.wallet - self.starting_wallet) / self.starting_wallet) / self.mdd * 100
 
         self.wandb.log({"metrics/equity": equity_ts_step,
                         "metrics/equity_benchmark": equity_benchmark_step,
-                        "metrics/std_deviation": std_deviation,
-                        "metrics/sharpe_ratio": sharpe_ratio,
-                        "metrics/mdd": mdd,
-                        "metrics/romad": romad})
+                        "metrics/std_deviation": self.std_deviation,
+                        "metrics/sharpe_ratio": self.sharpe_ratio,
+                        "metrics/mdd": self.mdd,
+                        "metrics/romad": self.romad})
 
         return info, shares_long
 
@@ -137,11 +138,15 @@ class Wallet(object):
         :param shares_months: number of shares traded in the current month
         :return: info
         """
-        commission = 0
+        self.last_position = action
+        commission = 0.00
         # If a trading trajectory Buy/Sell is closed with the current action then compute commissions
         if action == Actions.Sell.value and current_position == Positions.Long:
             commission = self.compute_commissions(self.cap_inv, shares_months, last_price) * 2
             self.tot_commissions += commission
+            self.last_commissions_paid = commission
+        else:
+            self.last_commissions_paid = 0.00
         # If there is an a long position or a long position is closed with the current action then update performances
         if (action == Actions.Sell.value and current_position == Positions.Long) or \
                 (action == Actions.Buy.value and current_position == Positions.Long):
@@ -179,7 +184,7 @@ class Wallet(object):
             # Valid for the first step of the environment
             if len(self.history["EquityTradingSystem"]) == 0:
                 equity_ts_step = 0
-                step_position = action
+                step_position = action if action == 1 else None
             else:
                 # The equity step is equal to the last equity step
                 equity_ts_step = self.history["EquityTradingSystem"][-1]
@@ -188,7 +193,7 @@ class Wallet(object):
                     step_position = None
                 else:
                     step_position = action
-            pl_step = 0
+            pl_step = 0.00
             wallet_step = self.wallet
 
         # Update equity benchmark
@@ -211,7 +216,7 @@ class Wallet(object):
         """
         shares_long = 0
         if ((action[0] == Actions.Sell.value and current_position == Positions.Long)
-                or (action[0] == Actions.Buy.value and current_position == Positions.Short)) \
+            or (action[0] == Actions.Buy.value and current_position == Positions.Short)) \
                 or len(self.history["EquityTradingSystem"]) == 0:
             self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
             # If you were Short and the chosen action is Buy

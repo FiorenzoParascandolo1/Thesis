@@ -6,11 +6,16 @@ params = {
     # Environment
     'FileName': "IBM.csv",
     'EnvType': "stocks-v0",
+    'Render': True,
 
-    # Environment - observation
+    # Environment - Observations
     'Periods': [1, 2, 3, 4, 5, 6, 7, 8],
     'Pixels': 30,
-    'ManageSymmetries': False,
+    'ManageSymmetries': True,
+
+    # Environment - Wallet
+    'WalletFactor': 1000,
+    'BetSizeFactor': 0.34,
 
     # Policy
     'Architecture': "LocallyConnected",
@@ -23,11 +28,8 @@ params = {
     'UpdateTimestamp': 90,
     'EpsClip': 0.1,
     'ValueLossCoefficient': 0.5,
-    'EntropyLossCoefficient': 0.01,
-
-    # Wallet
-    'WalletFactor': 1000,
-    'BetSizeFactor': 0.34}
+    'EntropyLossCoefficient': 0.01
+    }
 
 
 def main():

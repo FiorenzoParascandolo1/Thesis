@@ -2,11 +2,9 @@ import torch
 import torch.nn as nn
 import random
 import pandas as pd
-import math
 from torchvision.transforms import transforms
 from torch.distributions import Categorical
 from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManageSymmetries, IdentityTransformation
-from scipy.stats import entropy
 
 from src.models.model import LocallyConnectedNetwork, Vgg, CoordConvArchitecture
 
@@ -140,19 +138,17 @@ class PPO:
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.policy_old.eval()
         """
-        self.transform = Image_transformer(pixels=params['Pixels'],
-                                           periods=params['Periods'])
-        """
         self.transform = transforms.Compose([GADFTransformation(periods=params['Periods'],
                                                                 pixels=params['Pixels']),
                                              ManageSymmetries(pixels=params['Pixels']) if params['ManageSymmetries']
                                              else IdentityTransformation(),
                                              StackImages()])
+        """
         self.MseLoss = nn.MSELoss()
         self.wandb = wandb
 
     def select_action(self,
-                      state: pd.Series,
+                      state: torch.Tensor,
                       info: torch.Tensor) -> tuple:
         """
         Actor network is used to act in the environment. Information used at training time are stored in memory.
@@ -163,11 +159,11 @@ class PPO:
         to calculate the amount of capital to be allocated
         """
 
-        observation = self.transform(state)
+        # observation = self.transform(state)
         with torch.no_grad():
-            action, action_logprob, action_prob = self.policy_old.act(observation, info)
+            action, action_logprob, action_prob = self.policy_old.act(state, info)
 
-        self.buffer.states.append(observation)
+        self.buffer.states.append(state)
         self.buffer.infos.append(info)
         self.buffer.actions.append(action)
         self.buffer.logprobs.append(action_logprob)
@@ -247,23 +243,14 @@ class PPO:
         self.buffer.clear()
 
     def update_memory_for_finite_trajectories(self,
-                                              new_position: int,
-                                              last_price: float,
-                                              new_price: float,
-                                              cap_inv: float):
+                                              reward: float):
 
         self.buffer.infos.append(self.buffer.infos[-1])
         self.buffer.logprobs.append(self.buffer.logprobs[-1])
         self.buffer.states.append(self.buffer.states[-1])
         self.buffer.actions.append(self.buffer.actions[-1])
         self.buffer.is_terminals.append(False)
-
-        if new_position == 1:
-            self.buffer.rewards.append((new_price - last_price) /
-                                       last_price * cap_inv)
-        else:
-            self.buffer.rewards.append((last_price - new_price) /
-                                       last_price * cap_inv)
+        self.buffer.rewards.append(reward)
 
     def scheduler(self,
                   lr: float) -> None:

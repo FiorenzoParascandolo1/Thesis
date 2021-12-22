@@ -138,7 +138,26 @@ def normalize_dataframe_cols(dataframe: pd.DataFrame,
     return dataframe
 
 
-def get_rhombus(h=60, w=60) -> torch.tensor:
+def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    # Add time-feature
+    df = add_features_on_time(df)
+
+    # Select 9:30 <= hours:minute <= 16.00
+    df = df[df['Hour'] * MAX_HOUR < 17]
+    df = df[df['Hour'] * MAX_HOUR > 9]
+    df['Select_1'] = df['Hour'] * MAX_HOUR < 16
+    df['Select_2'] = (df['Minute'] * MAX_MINUTE < 5) & (df['Hour'] * MAX_HOUR >= 16)
+    df['Select_3'] = df['Select_1'] | df['Select_2']
+    df = df[df['Select_3'] == True]
+    df['Select_1'] = df['Hour'] * MAX_HOUR >= 10
+    df['Select_2'] = (df['Minute'] * MAX_MINUTE >= 30) & (df['Hour'] * MAX_HOUR >= 9)
+    df['Select_3'] = df['Select_1'] | df['Select_2']
+    df = df[df['Select_3'] == True]
+
+    return df
+
+
+def get_rhombus(h=60, w=60) -> torch.Tensor:
     """
     Returns a rhombus to get off symmetrical pixels in GAF images.
 
@@ -249,7 +268,6 @@ class ManageSymmetries(object):
         :param images: list of GAF images.
         :return: list of images preprocessed considering symmetries
         """
-
         """
         plt.imshow(images[0][2:5, :, :].detach().permute(1, 2, 0).numpy())
         plt.show()
@@ -264,7 +282,6 @@ class ManageSymmetries(object):
         plt.imshow((images[0] * self.symmetry_odd + images[0 + 1] * self.symmetry_even)[2:5, :, :].detach().permute(1, 2, 0).numpy())
         plt.show()
         """
-
         return [images[i] * self.symmetry_odd + images[i + 1] * self.symmetry_even
                 for i in range(0, len(images) - 1, 2)]
 
@@ -278,7 +295,6 @@ class GADFTransformation(object):
     def __init__(self,
                  periods: list,
                  pixels: int):
-
         """
         :param periods: list of periods to consider for slicing the time-series.
         :param pixels: number of elements in the sliced time-series to pass to the GAF transformation
@@ -288,6 +304,37 @@ class GADFTransformation(object):
         self.pixels = pixels
         self.gadf = GramianAngularField(image_size=pixels, method='difference')
 
+    def __call__(self,
+                 series: list) -> list:
+        """
+        :param images: dataframe containing OLHCV features
+        :return: list of GAF images for each period
+        """
+        aggregated_images = []
+
+        # For each period the list of each GAF image (created for each feature) is appended to aggregated_images
+        for i in range(len(series)):
+            # Apply GADF transformation to each sub-time series for each feature
+            images_period = [torch.Tensor(self.gadf.fit_transform(np.array(series[i].iloc[:, j]).reshape(1, -1)))
+                             for j in range(series[i].shape[1])]
+            aggregated_images.append(images_period)
+
+        # Given n periods, return a list of n-elements. Each element is a list of GADF image
+        return [torch.cat(aggregated_images[i], dim=0) for i in range(len(aggregated_images))]
+
+
+class ManagePeriods(object):
+    def __init__(self,
+                 periods: list,
+                 pixels: int):
+        """
+        :param periods: list of periods to consider for slicing the time-series.
+        :param pixels: number of elements in the sliced time-series to pass to the GAF transformation
+        :return:
+        """
+        self.periods = periods
+        self.pixels = pixels
+
     def manage_periods(self,
                        series: pd.Series,
                        period: int) -> pd.DataFrame:
@@ -296,39 +343,33 @@ class GADFTransformation(object):
         :param period: period is used to aggregate time series information in order to create a less granular one
         :return: the new time-series created
         """
+        """
         if period == 1:
             return pd.DataFrame(series[-1:0:-period][0:self.pixels]).iloc[::-1]
-        close = series[:, 4][-1:0:-period][0:self.pixels]
-        open = series[:, 0][-period:0:-period][0:self.pixels]
-        high = pd.Series([max(series[:, 1][(-period * (i + 1)):(-period * i if i != 0 else None)])
+        """
+        close = series[:, 5][-1:0:-period][0:self.pixels].astype(np.float64)
+        date = series[:, 0][-1:0:-period][0:self.pixels]
+        open = series[:, 1][-period:0:-period][0:self.pixels].astype(np.float64)
+        high = pd.Series([max(series[:, 2][(-period * (i + 1)):(-period * i if i != 0 else None)])
                           for i in range(self.pixels)])
-        low = pd.Series([max(series[:, 2][(-period * (i + 1)):(-period * i if i != 0 else None)])
+        low = pd.Series([min(series[:, 3][(-period * (i + 1)):(-period * i if i != 0 else None)])
                          for i in range(self.pixels)])
-        volume = pd.Series([sum(series[:, 3][(-period * (i + 1)):(-period * i if i != 0 else None)])
+        volume = pd.Series([sum(series[:, 4][(-period * (i + 1)):(-period * i if i != 0 else None)])
                             for i in range(self.pixels)])
 
-        return pd.DataFrame({'1': open, '2': high, '3': low, '4': volume, '5': close}).iloc[::-1]
+        df = pd.DataFrame({'Date': date, 'Open': open, 'High': high, 'Low': low, 'Volume': volume,
+                           'Close': close}).iloc[::-1]
+        df['Date'] = df['Date'].apply(lambda x: datetime.fromisoformat(x))
+        return df.set_index('Date')
 
     def __call__(self,
-                 images: pd.Series) -> list:
+                 series: pd.Series) -> list:
         """
-        :param images: dataframe containing OLHCV features
+        :param series: dataframe containing OLHCV features
         :return: list of GAF images for each period
         """
-        aggregated_images = []
 
-        # For each period the list of each GAF image (created for each feature) is appended to aggregated_images
-        for period in self.periods:
-            series = self.manage_periods(series=images, period=period)
-            # Extract the sub-time series according to period and pixels
-            # series = images[-1:0:-period][0:self.pixels]
-            # Apply GADF transformation to each sub-time series for each feature
-            images_period = [torch.Tensor(self.gadf.fit_transform(np.array(series.iloc[:, j]).reshape(1, -1)))
-                             for j in range(images.shape[1])]
-            aggregated_images.append(images_period)
-
-        # Given n periods, return a list of n-elements. Each element is a list of GADF image
-        return [torch.cat(aggregated_images[i], dim=0) for i in range(len(aggregated_images))]
+        return [self.manage_periods(series=series, period=period) for period in self.periods]
 
 
 class IdentityTransformation(object):

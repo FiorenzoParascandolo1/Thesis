@@ -269,7 +269,7 @@ class LocallyConnectedNetwork(nn.Module):
         """
         super().__init__()
 
-        # TODO: change name; add hyper parameters for kernel_size, strides, number of layers, action space cardinality
+        # TODO: add hyper parameters for kernel_size, strides, number of layers, action space cardinality
         self.actor = actor
         self.b0 = LocallyConnected2d(input_channels=5,
                                      num_channels=32,

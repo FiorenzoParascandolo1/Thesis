@@ -1,6 +1,6 @@
 import pandas as pd
 from gym_anytrading.envs import Positions
-from src.data_utils.preprocessing_utils import add_features_on_time
+from src.data_utils.preprocessing_utils import add_features_on_time, clean_dataframe
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
 import wandb
@@ -14,15 +14,22 @@ def training_loop(params: dict):
     """
     wandb.init(project="trading_system", entity="fiorenzoparascandolo", config=params)
 
-    df = add_features_on_time(pd.read_csv(params["FileName"]))
-    df = df[df.volume != 0]
+    df = pd.read_csv(params["FileName"])
+    df = clean_dataframe(df)
+
     window_size = params['Periods'][-1] * params['Pixels'] + 2
     env = Environment(df=df,
                       window_size=window_size,
                       frame_bound=(window_size, len(df)),
                       starting_wallet=df['close'].iloc[window_size - 2] * params['WalletFactor'],
                       bet_size_factor=params['BetSizeFactor'],
+                      periods=params['Periods'],
+                      pixels=params['Pixels'],
+                      manage_symmetries=params['ManageSymmetries'],
+                      render=params['Render'],
+                      name=params["FileName"].partition('.')[0],
                       wandb=wandb)
+
     policy = PPO(params, wandb)
 
     step = 1
@@ -44,24 +51,8 @@ def training_loop(params: dict):
         policy.buffer.is_terminals.append(packed_info[4])
         policy.buffer.rewards.append(packed_info[1])
 
-        if new_position == 0 and position == 1 or new_position == 1 and position == 0:
-            policy.update_memory_for_finite_trajectories(new_position,
-                                                         packed_info[0][0][-2, 4],
-                                                         packed_info[0][0][-1, 4],
-                                                         env.wallet.cap_inv)
-            """
-            policy.buffer.infos.append(policy.buffer.infos[-1])
-            policy.buffer.logprobs.append(policy.buffer.logprobs[-1])
-            policy.buffer.states.append(policy.buffer.states[-1])
-            policy.buffer.actions.append(policy.buffer.actions[-1])
-            policy.buffer.is_terminals.append(False)
-            if new_position == 1:
-                policy.buffer.rewards.append((packed_info[0][0][-1, 4] - packed_info[0][0][-2, 4]) /
-                                             packed_info[0][0][-2, 4] * env.wallet.cap_inv)
-            else:
-                policy.buffer.rewards.append((packed_info[0][0][-2, 4] - packed_info[0][0][-1, 4]) /
-                                             packed_info[0][0][-2, 4] * env.wallet.cap_inv)
-            """
+        if packed_info[-1] is not None:
+            policy.update_memory_for_finite_trajectories(packed_info[-1])
 
         if packed_info[3] is not None:
             # Check if a transition buy/sell is finished
