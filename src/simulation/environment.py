@@ -134,7 +134,6 @@ class Environment(StocksEnv):
             self.ax1 = self.fig.add_subplot(self.gs[1, 0])
             self.ax2 = self.fig.add_subplot(self.gs[1, 1])
             self.ax3 = self.fig.add_subplot(self.gs[0, :])
-
             # Titles of the performance indices of the table
             self.raw_table_performances = ["Profit/Loss",
                                            "Commissions",
@@ -395,12 +394,12 @@ class Environment(StocksEnv):
                            position: int) -> None:
 
         # Update Observation and Explanation plots for the current step
-        self.update_olhc_graphs()
-
+        self.update_olhc_graphs(action[2])
         # Observation axis computation
         buf = io.BytesIO()
         pio.write_image(self.olhc_1, buf, format='jpg', scale=3)
         img = Image.open(buf)
+        self.ax1.clear()
         self.ax1.axis('off')
         self.ax1.imshow(img)
 
@@ -408,6 +407,7 @@ class Environment(StocksEnv):
         buf = io.BytesIO()
         pio.write_image(self.olhc_2, buf, format='jpg', scale=3)
         img = Image.open(buf)
+        self.ax2.clear()
         self.ax2.imshow(img)
         self.ax2.axis('off')
 
@@ -431,8 +431,9 @@ class Environment(StocksEnv):
                           " (p = " + str(round(action[1][0][action[0]].item(), 2)) + ")")
 
         # Show the current step
-        plt.show(block=False)
-        plt.pause(5)
+        plt.draw()
+        # plt.show(block=False)
+        plt.pause(0.5)
 
         # Reset Observation and Explanation plots
         self.olhc_1 = make_subplots(rows=int(len(self.periods) / 2), cols=2, subplot_titles=self.subplots_titles,
@@ -495,7 +496,8 @@ class Environment(StocksEnv):
 
         return table_values, colours
 
-    def update_olhc_graphs(self):
+    def update_olhc_graphs(self,
+                           explanations: dict):
         # Add to each cycle the subplot relating to the corresponding granularity of the observation
         for i in range(1, len(self.periods) + 1):
             # Compute the index (in plotly indices start from 1)
@@ -517,13 +519,36 @@ class Environment(StocksEnv):
                                   row=row, col=col)
 
             # Update the explanation plot. TODO: adjust for explanation
+            open = [np.nan for _ in range(self.pixels)]
+            high = [np.nan for _ in range(self.pixels)]
+            low = [np.nan for _ in range(self.pixels)]
+            close = [np.nan for _ in range(self.pixels)]
+
+            if i in explanations.keys():
+                for couple in explanations[i]:
+                    open[couple[0]] = self.last_obs[i - 1]['Open'].tolist()[couple[0]]
+                    open[couple[1]] = self.last_obs[i - 1]['Open'].tolist()[couple[1]]
+                    high[couple[0]] = self.last_obs[i - 1]['High'].tolist()[couple[0]]
+                    high[couple[1]] = self.last_obs[i - 1]['High'].tolist()[couple[1]]
+                    low[couple[0]] = self.last_obs[i - 1]['Low'].tolist()[couple[0]]
+                    low[couple[1]] = self.last_obs[i - 1]['Low'].tolist()[couple[1]]
+                    close[couple[0]] = self.last_obs[i - 1]['Close'].tolist()[couple[0]]
+                    close[couple[1]] = self.last_obs[i - 1]['Close'].tolist()[couple[1]]
+
+            self.olhc_2.add_trace(go.Candlestick(x=x,
+                                                 open=open,
+                                                 high=high,
+                                                 low=low,
+                                                 close=close),
+                                  row=row, col=col)
+            """
             self.olhc_2.add_trace(go.Candlestick(x=x,
                                                  open=self.last_obs[i - 1]['Open'].tolist(),
                                                  high=self.last_obs[i - 1]['High'].tolist(),
                                                  low=self.last_obs[i - 1]['Low'].tolist(),
                                                  close=self.last_obs[i - 1]['Close'].tolist()),
                                   row=row, col=col)
-
+            """
             # the BUY / SELL labels are added to the graph of the observation with minimum granularity
             if i == 1:
                 # Get the history of the positions in the market (pixel = number of observations for each granularity)
@@ -581,6 +606,15 @@ class Environment(StocksEnv):
                                   xaxis6=dict(rangeslider=dict(visible=False)),
                                   xaxis7=dict(rangeslider=dict(visible=False)),
                                   xaxis8=dict(rangeslider=dict(visible=False)),
+                                  yaxis1=dict(range=[min(self.last_obs[0]['Low'].tolist()), max(self.last_obs[0]['High'].tolist())]),
+                                  yaxis2=dict(range=[min(self.last_obs[1]['Low'].tolist()), max(self.last_obs[1]['High'].tolist())]),
+                                  yaxis3=dict(range=[min(self.last_obs[2]['Low'].tolist()), max(self.last_obs[2]['High'].tolist())]),
+                                  yaxis4=dict(range=[min(self.last_obs[3]['Low'].tolist()), max(self.last_obs[3]['High'].tolist())]),
+                                  yaxis5=dict(range=[min(self.last_obs[4]['Low'].tolist()), max(self.last_obs[4]['High'].tolist())]),
+                                  yaxis6=dict(range=[min(self.last_obs[5]['Low'].tolist()), max(self.last_obs[5]['High'].tolist())]),
+                                  yaxis7=dict(range=[min(self.last_obs[6]['Low'].tolist()), max(self.last_obs[6]['High'].tolist())]),
+                                  yaxis8=dict(range=[min(self.last_obs[7]['Low'].tolist()), max(self.last_obs[7]['High'].tolist())]),
+
                                   margin=dict(b=0, l=0, r=0, t=50),
                                   title={'text': "Explanation",
                                          'y': 0.99,

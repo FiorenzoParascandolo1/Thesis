@@ -41,9 +41,9 @@ def training_loop(params: dict):
     while True:
 
         # Select the action
-        trade_actions, action_prob = policy.select_action(observation[0], observation[1])
+        trade_actions, action_prob, explanation = policy.select_action(observation[0], observation[1])
         # Perform step environment
-        packed_info = env.step((trade_actions, action_prob))
+        packed_info = env.step((trade_actions, action_prob, explanation))
 
         new_position = 0 if env.get_position() in [Positions.Short] else 1
 

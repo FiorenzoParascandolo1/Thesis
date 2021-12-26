@@ -141,18 +141,21 @@ def normalize_dataframe_cols(dataframe: pd.DataFrame,
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     # Add time-feature
     df = add_features_on_time(df)
-
+    df = df[df['volume'] != 0]
     # Select 9:30 <= hours:minute <= 16.00
+
+    """
     df = df[df['Hour'] * MAX_HOUR < 17]
     df = df[df['Hour'] * MAX_HOUR > 9]
     df['Select_1'] = df['Hour'] * MAX_HOUR < 16
     df['Select_2'] = (df['Minute'] * MAX_MINUTE < 5) & (df['Hour'] * MAX_HOUR >= 16)
     df['Select_3'] = df['Select_1'] | df['Select_2']
-    df = df[df['Select_3'] == True]
+    df = df[df['Select_3']]
     df['Select_1'] = df['Hour'] * MAX_HOUR >= 10
     df['Select_2'] = (df['Minute'] * MAX_MINUTE >= 30) & (df['Hour'] * MAX_HOUR >= 9)
     df['Select_3'] = df['Select_1'] | df['Select_2']
-    df = df[df['Select_3'] == True]
+    df = df[df['Select_3']]
+    """
 
     return df
 

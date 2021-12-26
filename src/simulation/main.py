@@ -6,7 +6,8 @@ params = {
     # Environment
     'FileName': "IBM.csv",
     'EnvType': "stocks-v0",
-    'Render': True,
+    'Render': False,
+    "Explanations": 10,
 
     # Environment - Observations
     'Periods': [1, 2, 3, 4, 5, 6, 7, 8],
