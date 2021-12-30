@@ -356,9 +356,9 @@ class Vgg(nn.Module):
             x = torch.flatten(x, start_dim=1)
 
         if actor:
-            self.head = nn.Linear(x.shape[1] + 10, 2)
+            self.head = nn.Linear(x.shape[1] + 9, 2)
         else:
-            self.head = nn.Linear(x.shape[1] + 10, 1)
+            self.head = nn.Linear(x.shape[1] + 9, 1)
 
     def forward(self, x, info):
 
@@ -408,9 +408,9 @@ class CoordConvArchitecture(nn.Module):
             x = torch.flatten(x, start_dim=1)
 
         if actor:
-            self.head = nn.Linear(x.shape[1] + 10, 2)
+            self.head = nn.Linear(x.shape[1] + 9, 2)
         else:
-            self.head = nn.Linear(x.shape[1] + 10, 1)
+            self.head = nn.Linear(x.shape[1] + 9, 1)
 
     def forward(self, x, info):
 
