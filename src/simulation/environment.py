@@ -33,41 +33,6 @@ def my_process_data(env):
     return prices, signal_features
 
 
-def compute_commissions(cap_inv: float,
-                        shares_months: float,
-                        last_price: float) -> float:
-    """
-    Simulation of the IB's degressive plan commission (https://www.interactivebrokers.eu/it/index.php?f=5688&p=stocks2)
-
-    :param cap_inv: invested capital
-    :param shares_months: number of shares traded in the current month
-    :param last_price: last price beaten
-
-    :return: commissions paid
-    """
-
-    commissions = 0
-    shares = cap_inv / last_price
-
-    if shares_months < 300000:
-        commissions = max(0.35, shares * 0.0035)
-        commissions = min(commissions, 0.01 * cap_inv)
-    if 300000 < shares_months <= 3000000:
-        commissions = max(0.35, shares * 0.002)
-        commissions = min(commissions, 0.01 * cap_inv)
-    if 3000000 < shares_months <= 20000000:
-        commissions = max(0.35, shares * 0.0015)
-        commissions = min(commissions, 0.01 * cap_inv)
-    if 20000000 < shares_months <= 100000000:
-        commissions = max(0.35, shares * 0.001)
-        commissions = min(commissions, 0.01 * cap_inv)
-    if shares_months > 100000000:
-        commissions = max(0.35, shares * 0.0005)
-        commissions = min(commissions, 0.01 * cap_inv)
-
-    return commissions
-
-
 def return_action_name(action: int,
                        position: int) -> str:
     if position == 1 and action == 1:
@@ -97,6 +62,8 @@ class Environment(StocksEnv):
                  manage_symmetries: bool,
                  render: bool,
                  name: str,
+                 pip: float,
+                 leverage: int,
                  wandb):
         """
         :param df: dataframe used to compile the trading simulation
@@ -106,14 +73,16 @@ class Environment(StocksEnv):
         :return:
         """
         super().__init__(df, window_size, frame_bound)
+
         self._start_tick = self.window_size
         self._end_tick = len(self.prices)
         self.wallet = Wallet(starting_wallet,
-                             self.prices[self._start_tick - 1],
                              bet_size_factor,
-                             wandb,
-                             compute_commissions)
+                             pip,
+                             leverage,
+                             wandb)
         self.periods = periods
+        self.pip = pip
         self.render = render
 
         if self.render:
@@ -158,8 +127,6 @@ class Environment(StocksEnv):
                                              ManageSymmetries(pixels=pixels) if manage_symmetries
                                              else IdentityTransformation(),
                                              StackImages()])
-        self.shares_months = 0
-        self.month = 0
         self.last_price_short = 0
         self.last_price_long = 0
         self.last_obs = None
@@ -173,7 +140,6 @@ class Environment(StocksEnv):
         obs = self._get_observation()
         self.last_price_short = obs[-2, 5]
         info = self.return_info(obs)
-        self.month = int(obs[-2, 0][5:7])
         # return the dataframe except the first column because it encodes the date
         aggregated_series = self.manage_periods(obs[:-1, 0:6])
         self.last_obs = aggregated_series
@@ -188,9 +154,7 @@ class Environment(StocksEnv):
         """
         done = False
         price_1 = price_2 = denominator = 0
-        commission = compute_commissions(self.wallet.cap_inv,
-                                         self.shares_months,
-                                         self.prices[self._current_tick - 2]) * 2
+
         """
         Case 1:
         if I held a Long position open and decided to sell -> the reward is the profit obtained, namely the percentage
@@ -198,8 +162,8 @@ class Environment(StocksEnv):
         because a trajectory buy/sell is completed 
         """
         if action[0] == Actions.Sell.value and self._position == Positions.Long:
-            price_1 = self.prices[self._current_tick - 2]
-            price_2 = self.prices[self._last_trade_tick]
+            price_1 = self.prices[self._current_tick - 2] - self.pip
+            price_2 = self.prices[self._last_trade_tick] + self.pip
             denominator = price_2
             done = True
         """
@@ -209,10 +173,9 @@ class Environment(StocksEnv):
         done is set to True because a trajectory sell/buy is completed 
         """
         if action[0] == Actions.Buy.value and self._position == Positions.Short:
-            price_1 = self.prices[self._last_trade_tick]
-            price_2 = self.prices[self._current_tick - 2]
+            price_1 = self.prices[self._last_trade_tick] - self.pip
+            price_2 = self.prices[self._current_tick - 2] + self.pip
             denominator = price_1
-            commission = -commission
             done = True
         """
         Case 3:
@@ -225,7 +188,6 @@ class Environment(StocksEnv):
             price_1 = self.prices[self._current_tick - 1]
             price_2 = self.prices[self._current_tick - 2]
             denominator = price_2
-            commission = -commission
         """
         Case 4:
         if I held a Short position open and decided to sell -> the reward is the profit obtained as if you had opened 
@@ -237,9 +199,8 @@ class Environment(StocksEnv):
             price_1 = self.prices[self._current_tick - 2]
             price_2 = self.prices[self._current_tick - 1]
             denominator = price_1
-            commission = -commission
 
-        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv - commission
+        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv
 
         return step_reward, done
 
@@ -251,18 +212,16 @@ class Environment(StocksEnv):
         :return: tuple containing step information
         """
         self._done = False
-        position = 0 if self.get_position() in [Positions.Short] else 1
+        position = self.get_position().value
 
         # Perform step environment
         step_reward, done_trajectory = self._calculate_reward(action)
 
         # Perform wallet step to update metric performances
-        info_wallet, shares_long = self.wallet.step(action,
-                                                    self.prices[self._last_trade_tick],
-                                                    self.prices[self._current_tick - 2],
-                                                    self._position,
-                                                    step_reward,
-                                                    self.shares_months)
+        info_wallet = self.wallet.step(action,
+                                       self.prices[self._last_trade_tick],
+                                       self.prices[self._current_tick - 2],
+                                       position)
 
         # Update last trade tick index and flip current position when the position is flipped due to the chosen action
         self.update_last_trade_tick_and_position(action[0])
@@ -274,60 +233,21 @@ class Environment(StocksEnv):
         self._current_tick += 1
         observation = self._get_observation()
         info = self.return_info(observation)
-        new_position = 0 if self.get_position() in [Positions.Short] else 1
 
-        # Reset the shares traded if the month is changed
-        self.update_shares_months(observation, shares_long)
         # Stop the simulation if you are at the end of the dataframe or if your wallet is empty
         if self._current_tick == self._end_tick or self.wallet.wallet <= 0:
             self._done = True
 
-        reward_trajectory = self.compute_reward_end_trajectory_new(position, new_position, observation)
-
         aggregated_series = self.manage_periods(observation[:-1, 0:6])
         self.last_obs = aggregated_series
 
-        return (self.transform(aggregated_series), info), \
-               step_reward, self._done, info_wallet, done_trajectory, reward_trajectory
+        return (self.transform(aggregated_series), info), step_reward, self._done, info_wallet, done_trajectory
 
     def get_position(self):
         """
         Return the current position
         """
         return self._position
-
-    def compute_reward_end_trajectory_new(self,
-                                          position: int,
-                                          new_position: int,
-                                          observation: pd.Series) -> float:
-
-        reward_trajectory = None
-
-        if new_position == 1 and position == 0:
-            reward_trajectory = (observation[-2, 6] - observation[-3, 6]) / observation[-3, 6] * self.wallet.cap_inv
-        if new_position == 0 and position == 1:
-            reward_trajectory = (observation[-3, 6] - observation[-2, 6]) / observation[-3, 6] * self.wallet.cap_inv
-
-        return reward_trajectory
-
-    def update_shares_months(self,
-                             observation: pd.Series,
-                             shares_long: float) -> None:
-        """
-        Reset the counter for the number of shares traded in the current month
-        :param observation: last observation
-        :param shares_long: the number of shares traded in the current step
-        :return: tuple containing step information
-        """
-        # If the last observation is the first observation of a new month
-        if int(observation[-1, 0][5:7]) != self.month:
-            # Update the current month
-            self.month = int(observation[-1, 0][5:7])
-            # Reset the counter for the number of the traded shares
-            self.shares_months = 0
-        else:
-            # Update the counter for the number of the traded shares
-            self.shares_months += shares_long * 2
 
     def update_last_trade_tick_and_position(self,
                                             action: int) -> None:
@@ -351,7 +271,6 @@ class Environment(StocksEnv):
         """
         Build info tensor: [profit/loss of the current trade, hurst, number of shares traded in the current month,
         current position, week day, month day, month, hour, minute]
-
         :param observation: info are extracted by considering the current observation
         :return: tensor info
         """
@@ -373,7 +292,6 @@ class Environment(StocksEnv):
 
         return torch.tensor([p_l,
                              hurst,
-                             self.shares_months / 100000000,
                              long,
                              short,
                              observation[-2, 6],
@@ -382,12 +300,6 @@ class Environment(StocksEnv):
                              observation[-2, 9],
                              observation[-2, 10]],
                             dtype=torch.float32).unsqueeze(dim=0)
-
-    def render_performances(self):
-        """
-        Render performances
-        """
-        self.wallet.render_all(self.prices[(self.window_size - 1):-1])
 
     def render_environment(self,
                            action: tuple,

@@ -292,10 +292,10 @@ class LocallyConnectedNetwork(nn.Module):
 
         # The actor neural network returns the probability for each action
         if self.actor:
-            self.classifier = nn.Linear(522, 2)
+            self.classifier = nn.Linear(521, 2)
         # The critic neural network return the state-value
         else:
-            self.classifier = nn.Linear(522, 1)
+            self.classifier = nn.Linear(521, 1)
 
     def forward(self,
                 x: torch.Tensor,

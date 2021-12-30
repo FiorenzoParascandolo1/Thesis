@@ -1,6 +1,6 @@
 import pandas as pd
 from gym_anytrading.envs import Positions
-from src.data_utils.preprocessing_utils import add_features_on_time, clean_dataframe
+from src.data_utils.preprocessing_utils import clean_dataframe
 from src.policy.policy import PPO
 from src.simulation.environment import Environment
 import wandb
@@ -14,7 +14,7 @@ def training_loop(params: dict):
     """
     wandb.init(project="trading_system", entity="fiorenzoparascandolo", config=params)
 
-    df = pd.read_csv(params["FileName"])
+    df = pd.read_csv(params["FileName"], delimiter="\t")
     df = clean_dataframe(df)
 
     window_size = params['Periods'][-1] * params['Pixels'] + 2
@@ -28,40 +28,38 @@ def training_loop(params: dict):
                       manage_symmetries=params['ManageSymmetries'],
                       render=params['Render'],
                       name=params["FileName"].partition('.')[0],
+                      pip=params['Pip'],
+                      leverage=params['Leverage'],
                       wandb=wandb)
 
     policy = PPO(params, wandb)
 
     step = 1
-    position = 0
-
     # Reset the environment
     observation = env.reset()
+    position = env.get_position().value
 
     while True:
 
         # Select the action
-        trade_actions, action_prob, explanation = policy.select_action(observation[0], observation[1])
+        trade_action, action_prob, explanation = policy.select_action(observation[0], observation[1])
         # Perform step environment
-        packed_info = env.step((trade_actions, action_prob, explanation))
+        packed_info = env.step((trade_action, action_prob, explanation))
 
-        new_position = 0 if env.get_position() in [Positions.Short] else 1
+        new_position = env.get_position().value
 
         # Update buffer with done and reward
         policy.buffer.is_terminals.append(packed_info[4])
         policy.buffer.rewards.append(packed_info[1])
 
-        if packed_info[-1] is not None:
-            policy.update_memory_for_finite_trajectories(packed_info[-1])
-
         if packed_info[3] is not None:
             # Check if a transition buy/sell is finished
-            if new_position == 0 and position == 1:
-                # Print the profit/loss obtained until the current step
-                print("step:", step,
-                      "tot_reward:", env.wallet.total_gain + env.wallet.total_loss,
-                      "commission_paid:", env.wallet.tot_commissions)
-
+            # Print the profit/loss obtained until the current step
+            print("step:", step,
+                  "position:", position,
+                  "action:", trade_action,
+                  "new_position:", new_position,
+                  "tot_reward:", env.wallet.total_gain + env.wallet.total_loss)
         # Update the policy
         if step % params['UpdateTimestamp'] == 0:
             policy.update()
@@ -78,7 +76,7 @@ def training_loop(params: dict):
                           "Position": env.wallet.history["Position"]}).to_csv('report.csv')
             """
             # Render performances
-            env.render_performances()
+            env.wallet.wandb_final()
             # Stop the experiment
             break
 

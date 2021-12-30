@@ -12,7 +12,6 @@ class RolloutBuffer(object):
                  horizon: int):
         """
         Agent's memory
-
         :param len_memory: buffer length.
         :param horizon: length of the time horizon to be considered for sampling
         :return:
@@ -31,7 +30,6 @@ class RolloutBuffer(object):
               clear=False) -> None:
         """
         Clean the memory when it is full or when there is a signal from outside
-
         :param clear: cleaning signal.
         :return:
         """
@@ -83,7 +81,6 @@ class ActorCritic(nn.Module):
             explain: bool) -> tuple:
         """
         Actor network is used to act in the environment (to gain experience)
-
         :param state: GAF image tensor.
         :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
         :param explain:
@@ -120,7 +117,6 @@ class ActorCritic(nn.Module):
         """
         Actor network is used to compute the action probs in order to produce action_logprobs and dist_entropy
         used at training time. Critic network is used to compute the state values used at training time
-
         :param state: GAF image tensor
         :param info: info tensor
         :param action: the chosen action
@@ -212,7 +208,6 @@ class PPO:
                       info: torch.Tensor) -> tuple:
         """
         Actor network is used to act in the environment. Information used at training time are stored in memory.
-
         :param state: GAF image tensor.
         :param info: info tensor = [current_profit, Hurst, number of shares traded in this month].
         :return: the choosen action to act in the environment, action probs used

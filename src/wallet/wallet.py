@@ -1,8 +1,9 @@
-from gym_anytrading.envs import Actions, Positions
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+from enum import Enum
 import math
+
+from gym_anytrading.envs import Actions
 
 
 def max_dd(wallet_series: list) -> float:
@@ -29,10 +30,10 @@ class Wallet(object):
 
     def __init__(self,
                  wallet,
-                 starting_price,
                  bet_size_factor,
-                 wandb,
-                 compute_commissions):
+                 pip,
+                 leverage,
+                 wandb):
         """
         :param wallet: amount of starting wallet
         :param starting_price: the close price of the first observation (used to compute benchmark performances)
@@ -42,17 +43,17 @@ class Wallet(object):
         """
         super().__init__()
         self.history = {"EquityTradingSystem": [],
-                        "EquityBenchmark": [],
                         "ProfitLoss": [],
                         "WalletSeries": [],
-                        "BenchmarkSeries": [],
-                        "Position": []}
+                        "Position": [],
+                        "PipPL": [],
+                        "Commissions": []}
 
         self.wandb = wandb
         self.starting_wallet = wallet
+        self.pip = pip
         self.wallet = self.starting_wallet
-        self.cap_inv = 0.5 * self.starting_wallet
-        self.starting_price_benchmark = starting_price
+        self.cap_inv = 0.0
         self.bet_size_factor = bet_size_factor
         self.total_reward = 0
         self.tot_operation = 0
@@ -60,16 +61,16 @@ class Wallet(object):
         self.total_gain = 0
         self.total_loss = 0
         self.tot_commissions = 0
-        self.compute_commissions = compute_commissions
-        self.last_position = 0
+        self.last_position = 2
+        self.bet_size = 0
+        self.tot_pip_pl = 0
+        self.leverage = leverage
 
     def step(self,
              action: tuple,
              price_enter: float,
              last_price: float,
-             current_position: int,
-             reward_step: float,
-             shares_months: int):
+             current_position: int):
         """
         Perform wallet step to update info
 
@@ -81,18 +82,20 @@ class Wallet(object):
         :param shares_months: number of shares traded in the current month
         :return: info
         """
-        equity_ts_step, equity_benchmark_step, pl_step, wallet_step, benchmark_step, step_position = \
-            self._compute_info(action[0], price_enter, last_price, current_position, reward_step, shares_months)
+        equity_ts_step, pl_step, wallet_step, commission, pip_pl = \
+            self._compute_info(action[0], price_enter, last_price, current_position)
 
-        shares_long = self._update_cap_inv(action, current_position, last_price)
+        self.tot_commissions += commission
+        self.tot_pip_pl += pip_pl
+
+        self._update_cap_inv(action)
 
         info = dict(
             EquityTradingSystem=equity_ts_step,
-            EquityBenchmark=equity_benchmark_step,
             ProfitLoss=pl_step,
             WalletSeries=wallet_step,
-            BenchmarkSeries=benchmark_step,
-            Position=step_position)
+            PipPL=pip_pl,
+            Commissions=commission)
 
         self._update_history(info)
 
@@ -101,8 +104,8 @@ class Wallet(object):
         if self.std_deviation == 0:
             self.sharpe_ratio = 0.00
         else:
-            self.sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
-                           / self.std_deviation
+            self.sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet) \
+                                / self.std_deviation
 
         self.mdd = max_dd(self.history["WalletSeries"])
 
@@ -112,21 +115,19 @@ class Wallet(object):
             self.romad = ((self.wallet - self.starting_wallet) / self.starting_wallet) / self.mdd * 100
 
         self.wandb.log({"metrics/equity": equity_ts_step,
-                        "metrics/equity_benchmark": equity_benchmark_step,
                         "metrics/std_deviation": self.std_deviation,
                         "metrics/sharpe_ratio": self.sharpe_ratio,
                         "metrics/mdd": self.mdd,
-                        "metrics/romad": self.romad})
+                        "metrics/romad": self.romad,
+                        "metrics/pip_pl": self.tot_pip_pl})
 
-        return info, shares_long
+        return info
 
     def _compute_info(self,
                       action: int,
                       price_enter: float,
                       last_price: float,
-                      current_position: int,
-                      step_reward: float,
-                      shares_months: int):
+                      current_position: int):
         """
         Compute info to update the performances history
 
@@ -138,93 +139,80 @@ class Wallet(object):
         :param shares_months: number of shares traded in the current month
         :return: info
         """
-        self.last_position = action
-        commission = 0.00
-        # If a trading trajectory Buy/Sell is closed with the current action then compute commissions
-        if action == Actions.Sell.value and current_position == Positions.Long:
-            commission = self.compute_commissions(self.cap_inv, shares_months, last_price) * 2
-            self.tot_commissions += commission
-            self.last_commissions_paid = commission
-        else:
-            self.last_commissions_paid = 0.00
-        # If there is an a long position or a long position is closed with the current action then update performances
-        if (action == Actions.Sell.value and current_position == Positions.Long) or \
-                (action == Actions.Buy.value and current_position == Positions.Long):
-            # Update equity time-series step
-            equity_ts_step = (self.total_reward + (last_price - price_enter)
-                              / price_enter * self.cap_inv - commission) / self.starting_wallet
-            # Update pl time-series step
-            pl_step = (last_price - price_enter) / price_enter * self.cap_inv - commission
-            # Update wallet time-series step
-            wallet_step = self.wallet + (last_price - price_enter) / price_enter * self.cap_inv - commission
-            # If a trading trajectory Buy/Sell is closed with the current action
-            if action == Actions.Sell.value and current_position == Positions.Long:
-                # Update total reward
-                self.total_reward = wallet_step - self.starting_wallet
-                # Update wallet
-                self.wallet += step_reward
-                # If a trading trajectory Buy/Sell is closed with the current action
-                if step_reward > 0:
-                    # Update the number of profit trades
-                    self.profit_trades += 1
-                    # Update the total gain realized
-                    self.total_gain += step_reward
-                else:
-                    # Update the total loss realized
-                    self.total_loss += step_reward
-                # Update the number of trading trajectory completed
-                self.tot_operation += 1
-                # Save the position
-                step_position = action
+
+        commissions = 0
+        pip_pl = 0
+        equity_ts_step = 0
+        pl_step = 0
+        wallet_step = self.wallet
+        self.last_position = current_position
+
+        if action == 1 and current_position == 1:
+            pl_step = (last_price - self.pip - price_enter + self.pip) / (price_enter + self.pip) * self.cap_inv
+            equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
+            wallet_step = self.wallet + pl_step
+
+        if action == 0 and current_position == 0:
+            pl_step = (price_enter - self.pip - last_price + self.pip) / (price_enter - self.pip) * self.cap_inv
+            equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
+            wallet_step = self.wallet + pl_step
+
+        if action == 0 and current_position == 1:
+            pip_pl = last_price - self.pip - price_enter + self.pip
+            pl_step = pip_pl / (price_enter + self.pip) * self.cap_inv
+            commissions = self.pip * 2 * self.cap_inv
+            equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
+            wallet_step = self.wallet + pl_step
+            self.total_reward = wallet_step - self.starting_wallet
+            self.wallet = wallet_step
+
+            if pl_step > 0:
+                # Update the number of profit trades
+                self.profit_trades += 1
+                # Update the total gain realized
+                self.total_gain += pl_step
             else:
-                # Position is set to None in order to don't display equal consecutive trading signal in the final plot
-                step_position = None
-        # If a trading trajectory Buy/Sell is not closed with the current action
-        else:
-            # Valid for the first step of the environment
-            if len(self.history["EquityTradingSystem"]) == 0:
-                equity_ts_step = 0
-                step_position = action if action == 1 else None
+                # Update the total loss realized
+                self.total_loss += pl_step
+            # Update the number of trading trajectory completed
+            self.tot_operation += 1
+
+        if action == 1 and current_position == 0:
+            pip_pl = price_enter - self.pip - last_price + self.pip
+            pl_step = pip_pl / (price_enter - self.pip) * self.cap_inv
+            commissions = self.pip * 2 * self.cap_inv
+            equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
+            wallet_step = self.wallet + pl_step
+            self.total_reward = wallet_step - self.starting_wallet
+            self.wallet = wallet_step
+
+            if pl_step > 0:
+                # Update the number of profit trades
+                self.profit_trades += 1
+                # Update the total gain realized
+                self.total_gain += pl_step
             else:
-                # The equity step is equal to the last equity step
-                equity_ts_step = self.history["EquityTradingSystem"][-1]
-                if action == Actions.Sell.value and current_position == Positions.Short:
-                    # Position = None in order to don't display equal consecutive trading signal in the final plot
-                    step_position = None
-                else:
-                    step_position = action
-            pl_step = 0.00
-            wallet_step = self.wallet
+                # Update the total loss realized
+                self.total_loss += pl_step
+            # Update the number of trading trajectory completed
+            self.tot_operation += 1
 
         # Update equity benchmark
-        equity_benchmark_step = (last_price - self.starting_price_benchmark) / self.starting_price_benchmark
-        benchmark_step = self.starting_wallet + self.starting_wallet * equity_benchmark_step
-
-        return equity_ts_step, equity_benchmark_step, pl_step, wallet_step, benchmark_step, step_position
+        return equity_ts_step, pl_step, wallet_step, commissions, pip_pl
 
     def _update_cap_inv(self,
-                        action: tuple,
-                        current_position: int,
-                        last_price: float) -> float:
+                        action: tuple):
         """
         Update cap_inv used to compute rewards and performances metrics computation
 
         :param action: (action, action_prob)
-        :param last_price: the last price beaten
-        :param current_position: the current position
-        :return: number of traded shares
         """
-        shares_long = 0
-        if ((action[0] == Actions.Sell.value and current_position == Positions.Long)
-            or (action[0] == Actions.Buy.value and current_position == Positions.Short)) \
-                or len(self.history["EquityTradingSystem"]) == 0:
-            self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
-            # If you were Short and the chosen action is Buy
-            if action[0] == Actions.Buy.value and current_position == Positions.Short:
-                # Update number of shares
-                shares_long = self.cap_inv / last_price
-                # shares_long = 60000 / self.cap_inv
-        return shares_long
+        if (action[0] == 1 and self.last_position == 0) or \
+                (action[0] == 0 and self.last_position == 1):
+            # self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
+            self.bet_size = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor)
+            leverage = int(30 * self.bet_size)
+            self.cap_inv = self.bet_size * self.wallet * leverage
 
     def _update_history(self,
                         info: dict) -> None:
@@ -240,32 +228,22 @@ class Wallet(object):
         for key, value in info.items():
             self.history[key].append(value)
 
-    def render_all(self,
-                   prices: pd.DataFrame) -> None:
+    def wandb_final(self) -> None:
         """
         Plot performances
 
         :param prices: price time-series
         :return:
         """
-        fig, (ax1, ax2) = plt.subplots(2)
-
         std_deviation = np.std(self.history["EquityTradingSystem"])
         total_percent_profit = (self.wallet - self.starting_wallet) / self.starting_wallet * 100
         win_rate = (self.profit_trades / self.tot_operation) * 100
         w_l_ratio = (self.total_gain / self.profit_trades) \
                     / (abs(self.total_loss) / (self.tot_operation - self.profit_trades))
-        sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet + 0.00012) \
+        sharpe_ratio = ((self.wallet - self.starting_wallet) / self.starting_wallet) \
                        / std_deviation
         mdd = max_dd(self.history["WalletSeries"])
         romad = total_percent_profit / mdd
-
-        std_deviation_benchmark = np.std(self.history["EquityBenchmark"])
-        benchmark_percent_profit = self.history["EquityBenchmark"][-1] * 100
-        mdd_benchmark = max_dd(self.history["BenchmarkSeries"])
-        sharpe_ratio_benchmark = ((self.history["BenchmarkSeries"][-1] - self.starting_wallet) /
-                                  self.starting_wallet + 0.00012) / std_deviation_benchmark
-        romad_benchmark = benchmark_percent_profit / mdd_benchmark
 
         self.wandb.run.summary["Total_Percent_Profit"] = total_percent_profit
         self.wandb.run.summary["Win_Rate"] = win_rate
@@ -273,56 +251,6 @@ class Wallet(object):
         self.wandb.run.summary["Sharpe_Ratio"] = sharpe_ratio
         self.wandb.run.summary["Maximum_Drawdown"] = mdd
         self.wandb.run.summary["Romad"] = romad
-        self.wandb.run.summary["Std deviation"] = std_deviation
-
-        self.wandb.run.summary["Benchmark_Percent_Profit"] = benchmark_percent_profit
-        self.wandb.run.summary["Maximum_Drawdown_Benchmark"] = mdd_benchmark
-        self.wandb.run.summary["Sharpe_Ratio_Benchmark"] = sharpe_ratio_benchmark
-        self.wandb.run.summary["Romad_Benchmark"] = romad_benchmark
-        self.wandb.run.summary["Std deviation benchmark"] = std_deviation_benchmark
-
-        fig.suptitle(
-            "Total Reward: %.2f" % self.total_reward + ' ~ ' +
-            "Total Commission: %.2f" % self.tot_commissions + ' ~ ' +
-            "Total Percent Profit: %.2f" % total_percent_profit + ' ~ ' +
-            "Number of trades: %d" % self.tot_operation + ' ~ ' +
-            "Win Rate: %.2f" % win_rate + ' ~ ' +
-            "W/L Ratio: %.2f" % w_l_ratio + ' ~ ' +
-            "Sharpe Ratio: %.2f" % sharpe_ratio + ' ~ ' +
-            "MDD: %.2f" % mdd + ' ~ ' +
-            "RoMaD: %.2f" % romad + ' ~ ' +
-            "Std Deviation: %.5f" % std_deviation + '\n' +
-            "Benchmark Percent Profit: %.2f" % benchmark_percent_profit + ' ~ ' +
-            "MDD Benchmark: %.2f" % mdd_benchmark + ' ~ ' +
-            "Sharpe Ratio Benchmark: %.2f" % sharpe_ratio_benchmark + ' ~ ' +
-            "RoMaD Benchmark: %.2f" % romad_benchmark + ' ~ ' +
-            "Std Deviation: %.5f" % std_deviation_benchmark)
-
-        window_ticks = np.arange(len(self.history["Position"]))
-        prices_test = prices
-
-        ax1.plot(prices_test)
-
-        short_ticks = []
-        long_ticks = []
-        for i, tick in enumerate(window_ticks):
-            if self.history["Position"][i] == 0:
-                short_ticks.append(tick)
-            elif self.history["Position"][i] == 1:
-                long_ticks.append(tick)
-
-        ax1.plot(short_ticks, prices_test[short_ticks], 'ro')
-        ax1.plot(long_ticks, prices_test[long_ticks], 'go')
-        ax1.title.set_text('Buy/Sell signals')
-        ax1.set_xlabel('Step')
-        ax1.set_ylabel('Price')
-
-        benchmark, = ax2.plot(np.arange(len(self.history["EquityBenchmark"])), self.history["EquityBenchmark"])
-        trading_system, = ax2.plot(np.arange(len(self.history["EquityTradingSystem"])),
-                                   self.history["EquityTradingSystem"])
-        ax2.title.set_text('Equity Line')
-        ax2.legend([benchmark, trading_system], ["Benchmark", "Trading System"])
-        ax2.set_xlabel('Step')
-        ax2.set_ylabel('wallet_step / wallet_0')
-
-        plt.show()
+        self.wandb.run.summary["Std_deviation"] = std_deviation
+        self.wandb.run.summary["Commissions"] = sum(self.history['Commissions'])
+        self.wandb.run.summary["Profit/Loss"] = self.wallet - self.starting_wallet
