@@ -63,7 +63,7 @@ class Environment(StocksEnv):
                  render: bool,
                  name: str,
                  pip: float,
-                 leverage: int,
+                 leverage: bool,
                  wandb):
         """
         :param df: dataframe used to compile the trading simulation

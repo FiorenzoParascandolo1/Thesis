@@ -12,7 +12,7 @@ def training_loop(params: dict):
     param dict: hyper parameters
     returns:
     """
-    wandb.init(project="trading_system", entity="fiorenzoparascandolo", config=params)
+    wandb.init(project="forex_trading", entity="fiorenzoparascandolo", config=params)
 
     df = pd.read_csv(params["FileName"], delimiter="\t")
     df = clean_dataframe(df)

@@ -9,7 +9,7 @@ params = {
     'Render': False,
     "Explanations": 10,
     "Pip": 0.0000062 / 2,
-    "Leverage": 1,
+    "Leverage": False,
 
     # Environment - Observations
     'Periods': [1, 2, 3, 4, 5, 6, 7, 8],

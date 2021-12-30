@@ -211,7 +211,10 @@ class Wallet(object):
                 (action[0] == 0 and self.last_position == 1):
             # self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
             self.bet_size = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor)
-            leverage = int(30 * self.bet_size)
+            if self.leverage:
+                leverage = int(30 * self.bet_size)
+            else:
+                leverage = 1
             self.cap_inv = self.bet_size * self.wallet * leverage
 
     def _update_history(self,
