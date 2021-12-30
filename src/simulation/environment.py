@@ -64,6 +64,7 @@ class Environment(StocksEnv):
                  name: str,
                  pip: float,
                  leverage: bool,
+                 type: str,
                  wandb):
         """
         :param df: dataframe used to compile the trading simulation
@@ -123,7 +124,8 @@ class Environment(StocksEnv):
 
         self.manage_periods = ManagePeriods(pixels=pixels, periods=periods)
         self.transform = transforms.Compose([GADFTransformation(periods=periods,
-                                                                pixels=pixels),
+                                                                pixels=pixels,
+                                                                type=type),
                                              ManageSymmetries(pixels=pixels) if manage_symmetries
                                              else IdentityTransformation(),
                                              StackImages()])
