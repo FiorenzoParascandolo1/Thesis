@@ -298,7 +298,8 @@ class GADFTransformation(object):
 
     def __init__(self,
                  periods: list,
-                 pixels: int):
+                 pixels: int,
+                 gaf: str):
         """
         :param periods: list of periods to consider for slicing the time-series.
         :param pixels: number of elements in the sliced time-series to pass to the GAF transformation
@@ -306,7 +307,12 @@ class GADFTransformation(object):
         """
         self.periods = periods
         self.pixels = pixels
-        self.gadf = GramianAngularField(image_size=pixels, method='difference')
+        if gaf == "gasf":
+            method = 'summation'
+        else:
+            method = 'difference'
+
+        self.gaf = GramianAngularField(image_size=pixels, method=method)
 
     def __call__(self,
                  series: list) -> list:
@@ -319,7 +325,7 @@ class GADFTransformation(object):
         # For each period the list of each GAF image (created for each feature) is appended to aggregated_images
         for i in range(len(series)):
             # Apply GADF transformation to each sub-time series for each feature
-            images_period = [torch.Tensor(self.gadf.fit_transform(np.array(series[i].iloc[:, j]).reshape(1, -1)))
+            images_period = [torch.Tensor(self.gaf.fit_transform(np.array(series[i].iloc[:, j]).reshape(1, -1)))
                              for j in range(series[i].shape[1])]
             aggregated_images.append(images_period)
 
