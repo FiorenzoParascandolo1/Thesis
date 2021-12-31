@@ -13,7 +13,7 @@ params = {
 
     # Environment - Observations
     'Periods': [1, 2, 3, 4, 5, 6, 7, 8],
-    'Type': "gasf",
+    'Type': "gadf",
     'Pixels': 30,
     'ManageSymmetries': True,
 
