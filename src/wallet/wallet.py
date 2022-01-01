@@ -164,6 +164,9 @@ class Wallet(object):
         wallet_step = self.wallet
         self.last_position = current_position
 
+        if self.last_position == 2 and len(self.history["EquityTradingSystem"]) != 0:
+            equity_ts_step = self.history["EquityTradingSystem"][-1]
+
         if action == 1 and current_position == 1:
             pl_step = (last_price - self.pip - price_enter + self.pip) / (price_enter + self.pip) * self.cap_inv
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
