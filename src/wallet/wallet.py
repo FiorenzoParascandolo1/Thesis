@@ -3,7 +3,26 @@ import pandas as pd
 from enum import Enum
 import math
 
-from gym_anytrading.envs import Actions
+
+class Positions(Enum):
+    Short = 0
+    Long = 1
+    NoPosition = 2
+
+    def opposite(self,
+                 action: int):
+        if self == Positions.NoPosition and action == 1:
+            return Positions.Long
+        if self == Positions.NoPosition and action == 0:
+            return Positions.Short
+        if self == Positions.Long and action == 0:
+            return Positions.NoPosition
+        if self == Positions.Short and action == 1:
+            return Positions.NoPosition
+        if self == Positions.Long and action == 1:
+            return Positions.Long
+        if self == Positions.Short and action == 0:
+            return Positions.Short
 
 
 def max_dd(wallet_series: list) -> float:
@@ -135,8 +154,6 @@ class Wallet(object):
         :param price_enter: enter price of the last transition Short.Position -> Buy
         :param last_price: the last price beaten
         :param current_position: the current position
-        :param step_reward:
-        :param shares_months: number of shares traded in the current month
         :return: info
         """
 
@@ -207,8 +224,8 @@ class Wallet(object):
 
         :param action: (action, action_prob)
         """
-        if (action[0] == 1 and self.last_position == 0) or \
-                (action[0] == 0 and self.last_position == 1):
+        if (action[0] == 1 and self.last_position == 2) or \
+                (action[0] == 0 and self.last_position == 2):
             # self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
             self.bet_size = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor)
             if self.leverage:
