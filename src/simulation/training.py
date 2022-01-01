@@ -63,7 +63,6 @@ def training_loop(params: dict):
                   "new_position:", new_position,
                   "tot_reward:", env.wallet.total_gain + env.wallet.total_loss)
         """
-
         # Update the policy
         if step % params['UpdateTimestamp'] == 0:
             policy.update()

@@ -1,0 +1,22 @@
+{
+    "os": "Windows-10-10.0.19041-SP0",
+    "python": "3.7.6",
+    "heartbeatAt": "2022-01-01T11:03:46.534586",
+    "startedAt": "2022-01-01T11:03:42.448395",
+    "docker": null,
+    "cpu_count": 8,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "C:/Users/39392/PycharmProjects/Thesis/src/simulation/main.py",
+    "codePath": "src\\simulation\\main.py",
+    "git": {
+        "remote": "https://github.com/FiorenzoParascandolo1/Thesis.git",
+        "commit": "17f7d8afbf7ef38a6787b7b74573934849433429"
+    },
+    "email": "fiorenzo.parascandolo@gmail.com",
+    "root": "C:/Users/39392/PycharmProjects/Thesis",
+    "host": "LAPTOP-KEJ7D43A",
+    "username": "39392",
+    "executable": "C:\\Users\\39392\\anaconda3\\python.exe"
+}
