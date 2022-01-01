@@ -274,3 +274,4 @@ class Wallet(object):
         self.wandb.run.summary["Std_deviation"] = std_deviation
         self.wandb.run.summary["Commissions"] = sum(self.history['Commissions'])
         self.wandb.run.summary["Profit/Loss"] = self.wallet - self.starting_wallet
+        self.wandb.run.summary["Total_Number_Trades"] = self.tot_operation
