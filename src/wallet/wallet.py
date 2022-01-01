@@ -64,6 +64,7 @@ class Wallet(object):
         self.last_position = 2
         self.bet_size = 0
         self.tot_pip_pl = 0
+        self.last_commission_paid = 0
         self.leverage = leverage
 
     def step(self,
@@ -86,6 +87,7 @@ class Wallet(object):
             self._compute_info(action[0], price_enter, last_price, current_position)
 
         self.tot_commissions += commission
+        self.last_commission_paid = commission
         self.tot_pip_pl += pip_pl
 
         self._update_cap_inv(action)

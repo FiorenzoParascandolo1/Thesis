@@ -85,6 +85,7 @@ class Environment(StocksEnv):
         self.periods = periods
         self.pip = pip
         self.render = render
+        self.open_prices = df['open']
 
         if self.render:
             # Asset name
@@ -164,7 +165,7 @@ class Environment(StocksEnv):
         because a trajectory buy/sell is completed 
         """
         if action[0] == Actions.Sell.value and self._position == Positions.Long:
-            price_1 = self.prices[self._current_tick - 2] - self.pip
+            price_1 = self.open_prices[self._current_tick - 2] - self.pip
             price_2 = self.prices[self._last_trade_tick] + self.pip
             denominator = price_2
             done = True
@@ -175,7 +176,7 @@ class Environment(StocksEnv):
         done is set to True because a trajectory sell/buy is completed 
         """
         if action[0] == Actions.Buy.value and self._position == Positions.Short:
-            price_1 = self.prices[self._last_trade_tick] - self.pip
+            price_1 = self.open_prices[self._last_trade_tick] - self.pip
             price_2 = self.prices[self._current_tick - 2] + self.pip
             denominator = price_1
             done = True
@@ -221,7 +222,7 @@ class Environment(StocksEnv):
 
         # Perform wallet step to update metric performances
         info_wallet = self.wallet.step(action,
-                                       self.prices[self._last_trade_tick],
+                                       self.open_prices[self._last_trade_tick],
                                        self.prices[self._current_tick - 2],
                                        position)
 
@@ -260,13 +261,13 @@ class Environment(StocksEnv):
         """
         if action == Actions.Buy.value and self._position == Positions.Short or \
                 action == Actions.Sell.value and self._position == Positions.Long:
-            self._last_trade_tick = self._current_tick - 2
+            self._last_trade_tick = self._current_tick - 1
             self._position = self._position.opposite()
 
             if action == Actions.Buy.value:
-                self.last_price_long = self.prices[self._last_trade_tick]
+                self.last_price_long = self.open_prices[self._last_trade_tick] + self.pip
             else:
-                self.last_price_short = self.prices[self._last_trade_tick]
+                self.last_price_short = self.open_prices[self._last_trade_tick] - self.pip
 
     def return_info(self,
                     observation: pd.Series) -> torch.Tensor:
@@ -278,9 +279,9 @@ class Environment(StocksEnv):
         """
         # Profit/loss computation depends from the current position (long/short trade or short selling)
         if self._position == 0:
-            p_l = (observation[-2, 5] - self.last_price_long) / self.last_price_long
+            p_l = (observation[-2, 5] - self.pip - self.last_price_long) / self.last_price_long
         else:
-            p_l = (self.last_price_short - observation[-2, 5]) / self.last_price_short
+            p_l = (self.last_price_short - observation[-2, 5] + self.pip) / self.last_price_short
 
         # Compute Hurst exponent
         hurst = compute_Hc(observation[-101:-1, 5], kind='price', simplified=True)[0]
