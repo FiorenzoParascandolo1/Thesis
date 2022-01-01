@@ -53,6 +53,7 @@ def training_loop(params: dict):
         policy.buffer.is_terminals.append(packed_info[4])
         policy.buffer.rewards.append(packed_info[1])
 
+        """
         if packed_info[3] is not None:
             # Check if a transition buy/sell is finished
             # Print the profit/loss obtained until the current step
@@ -64,6 +65,7 @@ def training_loop(params: dict):
         # Update the policy
         if step % params['UpdateTimestamp'] == 0:
             policy.update()
+        """
 
         done = packed_info[2]
 
