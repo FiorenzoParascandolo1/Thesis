@@ -81,10 +81,10 @@ class CoordConv(nn.Module):
         """
         super().__init__()
         self.input_size = input_size
-        self.conv1 = nn.Conv2d(in_channels=input_channels + 2,
-                               out_channels=(input_channels + 2) * 2,
-                               kernel_size=(1, 1),
-                               stride=(1, 1))
+        self.conv1 = LocallyConnected2d(input_channels=7,
+                                        num_channels=14,
+                                        input_size=(60, 60),
+                                        kernel_size=(1, 1), strides=(1, 1))
         self.conv = nn.Conv2d(in_channels=(input_channels + 2) * 2,
                               out_channels=num_channels,
                               kernel_size=kernel_size,
