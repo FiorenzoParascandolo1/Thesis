@@ -50,8 +50,8 @@ class LocallyConnected2d(nn.Module):
 
         # Apply convolutional layer for each spatial location
         y = [[self.convs[i][j](x[:, :,
-                               (i * self.kernel_size[0]):(i * self.kernel_size[0] + self.kernel_size[0]),
-                               (j * self.kernel_size[1]):(j * self.kernel_size[1] + self.kernel_size[1])])
+                               i:(i + self.kernel_size[0]),
+                               j:(j + self.kernel_size[1])])
               for j in range(self.W_out)]
              for i in range(self.H_out)]
 
@@ -98,8 +98,12 @@ class CoordConv(nn.Module):
                            (input_size[1] - 1)) * 2 - 1
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        xx_channel = self.xx_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[0] != 1 else self.xx_channel.unsqueeze(dim=1)
-        yy_channel = self.yy_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[0] != 1 else self.yy_channel.unsqueeze(dim=1)
+        xx_channel = self.xx_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[
+                                                                                        0] != 1 else self.xx_channel.unsqueeze(
+            dim=1)
+        yy_channel = self.yy_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[
+                                                                                        0] != 1 else self.yy_channel.unsqueeze(
+            dim=1)
         x = torch.cat([x,
                        xx_channel,
                        yy_channel], dim=1)
@@ -256,74 +260,6 @@ class NonLocalBlock(nn.Module):
         return z
 
 
-class LocallyConnectedNetwork(nn.Module):
-    """
-    Neural network architecture used for actor/critic
-    """
-
-    def __init__(self,
-                 actor=True) -> None:
-        """
-        :param actor: actor influences the output size: if actor -> output_size = |action_space|, 1 otherwise.
-        :return:
-        """
-        super().__init__()
-
-        # TODO: add hyper parameters for kernel_size, strides, number of layers, action space cardinality
-        self.actor = actor
-        self.b0 = LocallyConnected2d(input_channels=5,
-                                     num_channels=32,
-                                     input_size=(60, 60),
-                                     kernel_size=(3, 3), strides=(3, 3))
-        self.b1 = LocallyConnected2d(input_channels=32,
-                                     num_channels=64,
-                                     input_size=(20, 20),
-                                     kernel_size=(2, 2), strides=(2, 2))
-        self.b2 = LocallyConnected2d(input_channels=64,
-                                     num_channels=128,
-                                     input_size=(10, 10),
-                                     kernel_size=(5, 5), strides=(5, 5))
-
-        """
-        self.b0 = nn.Conv2d(6, 32, kernel_size=(3, 3), stride=(3, 3))
-        self.b1 = nn.Conv2d(32, 64, kernel_size=(2, 2), stride=(2, 2))
-        self.b2 = nn.Conv2d(64, 128, kernel_size=(5, 5), stride=(5, 5))
-        """
-
-        # The actor neural network returns the probability for each action
-        if self.actor:
-            self.classifier = nn.Linear(521, 2)
-        # The critic neural network return the state-value
-        else:
-            self.classifier = nn.Linear(521, 1)
-
-    def forward(self,
-                x: torch.Tensor,
-                info: torch.Tensor) -> torch.Tensor:
-        """
-        :param x: GAF images tensor
-        :param info: info tensor
-        :return: probability for each action if actor; state_value otherwise
-        TODO: encapsulate 'info' in 'x' somehow
-        """
-        if len(x.shape) == 3:
-            x = x.unsqueeze(dim=0)
-        if len(info.shape) == 1:
-            info = info.unsqueeze(dim=1)
-        # plt.imshow(x[0, :3, :, :].detach().permute(1, 2, 0).numpy())
-        # plt.show()
-        x = torch.tanh(self.b0(x))
-        x = torch.tanh(self.b1(x))
-        x = torch.tanh(self.b2(x))
-        x = torch.flatten(x, start_dim=1)
-        x = torch.cat((x, info), dim=1)
-        x = self.classifier(x)
-
-        if self.actor:
-            x = F.softmax(x, dim=1)
-        return x
-
-
 class Vgg(nn.Module):
 
     def __init__(self,
@@ -353,6 +289,7 @@ class Vgg(nn.Module):
             x = self.stage_1(x)
             x = self.stage_2(x)
             x = self.stage_3(x)
+
             x = torch.flatten(x, start_dim=1)
 
         if actor:
@@ -379,7 +316,74 @@ class Vgg(nn.Module):
             return self.head(x)
 
 
-class CoordConvArchitecture(nn.Module):
+class DeepFace(nn.Module):
+
+    def __init__(self,
+                 pixels,
+                 actor=True):
+        super().__init__()
+
+        self.actor = actor
+
+        self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3)),
+                                     nn.Tanh())
+        self.stage_2 = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3)),
+                                     nn.Tanh(),
+                                     nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), stride=(2, 2)),
+                                     nn.Tanh())
+        self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
+                                     nn.Tanh(),
+                                     nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
+                                     nn.Tanh())
+
+        self.stage_4 = nn.Sequential(LocallyConnected2d(input_channels=128,
+                                                        num_channels=128,
+                                                        input_size=(5, 5),
+                                                        kernel_size=(3, 3), strides=(1, 1)),
+                                     nn.Tanh())
+
+        self.stage_5 = nn.Sequential(LocallyConnected2d(input_channels=128,
+                                                        num_channels=128,
+                                                        input_size=(3, 3),
+                                                        kernel_size=(2, 2), strides=(1, 1)),
+                                     nn.Tanh())
+
+        with torch.no_grad():
+            x = torch.randn(1, 5, pixels * 2, pixels * 2)
+            x = self.stage_1(x)
+            x = self.stage_2(x)
+            x = self.stage_3(x)
+            x = self.stage_4(x)
+            x = self.stage_5(x)
+            x = torch.flatten(x, start_dim=1)
+
+        if actor:
+            self.head = nn.Linear(x.shape[1] + 9, 2)
+        else:
+            self.head = nn.Linear(x.shape[1] + 9, 1)
+
+    def forward(self, x, info):
+
+        if len(x.shape) == 3:
+            x = x.unsqueeze(dim=0)
+        if len(info.shape) == 1:
+            info = info.unsqueeze(dim=1)
+
+        x = self.stage_1(x)
+        x = self.stage_2(x)
+        x = self.stage_3(x)
+        x = self.stage_4(x)
+        x = self.stage_5(x)
+        x = torch.flatten(x, start_dim=1)
+        x = torch.cat((x, info), dim=1)
+
+        if self.actor:
+            return F.softmax(self.head(x), dim=1)
+        else:
+            return self.head(x)
+
+
+class CoordConvDeepFace(nn.Module):
 
     def __init__(self,
                  pixels,
@@ -399,12 +403,24 @@ class CoordConvArchitecture(nn.Module):
                                      nn.Tanh(),
                                      nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
                                      nn.Tanh())
+        self.stage_4 = nn.Sequential(LocallyConnected2d(input_channels=128,
+                                                        num_channels=128,
+                                                        input_size=(5, 5),
+                                                        kernel_size=(3, 3), strides=(1, 1)),
+                                     nn.Tanh())
+        self.stage_5 = nn.Sequential(LocallyConnected2d(input_channels=128,
+                                                        num_channels=128,
+                                                        input_size=(3, 3),
+                                                        kernel_size=(2, 2), strides=(1, 1)),
+                                     nn.Tanh())
 
         with torch.no_grad():
             x = torch.randn(1, 5, pixels * 2, pixels * 2)
             x = self.stage_1(x)
             x = self.stage_2(x)
             x = self.stage_3(x)
+            x = self.stage_4(x)
+            x = self.stage_5(x)
             x = torch.flatten(x, start_dim=1)
 
         if actor:
@@ -422,6 +438,8 @@ class CoordConvArchitecture(nn.Module):
         x = self.stage_1(x)
         x = self.stage_2(x)
         x = self.stage_3(x)
+        x = self.stage_4(x)
+        x = self.stage_5(x)
         x = torch.flatten(x, start_dim=1)
         x = torch.cat((x, info), dim=1)
 

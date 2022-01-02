@@ -3,7 +3,7 @@ import torch.nn as nn
 import random
 from torch.distributions import Categorical
 import numpy as np
-from src.models.model import LocallyConnectedNetwork, Vgg, CoordConvArchitecture
+from src.models.model import Vgg, CoordConvDeepFace, DeepFace
 
 
 class RolloutBuffer(object):
@@ -45,7 +45,6 @@ class RolloutBuffer(object):
         """
         Extract a consecutive sample of elements from the buffer according to the time horizon considered
         """
-
         head = random.randint(self.horizon, len(self.rewards) - 1)
         return slice(head - self.horizon, head, 1)
 
@@ -61,15 +60,15 @@ class ActorCritic(nn.Module):
                  explanations: int,
                  manage_symmetries: bool):
         super(ActorCritic, self).__init__()
-        if architecture in ['LocallyConnected']:
-            self.actor = LocallyConnectedNetwork()
-            self.critic = LocallyConnectedNetwork(actor=False)
+        if architecture in ['DeepFace']:
+            self.actor = DeepFace(pixels=pixels)
+            self.critic = DeepFace(pixels=pixels, actor=False)
         elif architecture in ['Vgg']:
             self.actor = Vgg(pixels=pixels)
             self.critic = Vgg(pixels=pixels, actor=False)
-        elif architecture in ['CoordConv']:
-            self.actor = CoordConvArchitecture(pixels=pixels)
-            self.critic = CoordConvArchitecture(pixels=pixels, actor=False)
+        elif architecture in ['CoordConvDeepFace']:
+            self.actor = CoordConvDeepFace(pixels=pixels)
+            self.critic = CoordConvDeepFace(pixels=pixels, actor=False)
 
         self.pixels = pixels
         self.manage_symmetries = manage_symmetries
