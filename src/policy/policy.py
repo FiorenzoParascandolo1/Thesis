@@ -46,12 +46,8 @@ class RolloutBuffer(object):
         """
         Extract a consecutive sample of elements from the buffer according to the time horizon considered
         """
-        hursts = [1 - entropy([self.infos[i][0][1].item(), 1 - self.infos[i][0][1].item()], base=2)
-                  for i in range(self.horizon, len(self.rewards))]
-        min_brownian = max(hursts)
-        min_brownian_index = hursts.index(min_brownian) + self.horizon
-
-        return slice(min_brownian_index - self.horizon, min_brownian_index, 1)
+        head = random.randint(self.horizon, len(self.rewards) - 1)
+        return slice(head - self.horizon, head, 1)
 
 
 class ActorCritic(nn.Module):
