@@ -172,7 +172,6 @@ class ActorCritic(nn.Module):
 class PPO:
     """
     https://arxiv.org/pdf/1707.06347.pdf
-    TODO: manage better hyper parameters
     """
 
     def __init__(self,

@@ -325,7 +325,7 @@ class DeepFace(nn.Module):
 
         self.actor = actor
 
-        self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3)),
+        self.stage_1 = nn.Sequential(nn.Conv2d(in_channels=5, out_channels=32, kernel_size=(3, 3), stride=(2, 2)),
                                      nn.Tanh())
         self.stage_2 = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3, 3)),
                                      nn.Tanh(),
