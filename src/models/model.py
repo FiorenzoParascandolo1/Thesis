@@ -49,9 +49,7 @@ class LocallyConnected2d(nn.Module):
         """
 
         # Apply convolutional layer for each spatial location
-        y = [[self.convs[i][j](x[:, :,
-                               i:(i + self.kernel_size[0]),
-                               j:(j + self.kernel_size[1])])
+        y = [[self.convs[i][j](x[:, :, i:(i + self.kernel_size[0]), j:(j + self.kernel_size[1])])
               for j in range(self.W_out)]
              for i in range(self.H_out)]
 
@@ -98,12 +96,10 @@ class CoordConv(nn.Module):
                            (input_size[1] - 1)) * 2 - 1
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        xx_channel = self.xx_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[
-                                                                                        0] != 1 else self.xx_channel.unsqueeze(
-            dim=1)
-        yy_channel = self.yy_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) if x.shape[
-                                                                                        0] != 1 else self.yy_channel.unsqueeze(
-            dim=1)
+        xx_channel = self.xx_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) \
+            if x.shape[0] != 1 else self.xx_channel.unsqueeze(dim=1)
+        yy_channel = self.yy_channel.repeat(x.shape[0], 1, 1, 1).transpose(2, 3) \
+            if x.shape[0] != 1 else self.yy_channel.unsqueeze(dim=1)
         x = torch.cat([x,
                        xx_channel,
                        yy_channel], dim=1)
@@ -331,21 +327,23 @@ class DeepFace(nn.Module):
                                      nn.Tanh(),
                                      nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), stride=(2, 2)),
                                      nn.Tanh())
-        self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
-                                     nn.Tanh(),
-                                     nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
+
+        self.stage_3 = nn.Sequential(LocallyConnected2d(input_channels=64,
+                                                        num_channels=64,
+                                                        input_size=(13, 13),
+                                                        kernel_size=(5, 5), strides=(1, 1)),
                                      nn.Tanh())
 
-        self.stage_4 = nn.Sequential(LocallyConnected2d(input_channels=128,
-                                                        num_channels=128,
+        self.stage_4 = nn.Sequential(LocallyConnected2d(input_channels=64,
+                                                        num_channels=64,
+                                                        input_size=(9, 9),
+                                                        kernel_size=(5, 5), strides=(1, 1)),
+                                     nn.Tanh())
+
+        self.stage_5 = nn.Sequential(LocallyConnected2d(input_channels=64,
+                                                        num_channels=64,
                                                         input_size=(5, 5),
                                                         kernel_size=(3, 3), strides=(1, 1)),
-                                     nn.Tanh())
-
-        self.stage_5 = nn.Sequential(LocallyConnected2d(input_channels=128,
-                                                        num_channels=128,
-                                                        input_size=(3, 3),
-                                                        kernel_size=(2, 2), strides=(1, 1)),
                                      nn.Tanh())
 
         with torch.no_grad():

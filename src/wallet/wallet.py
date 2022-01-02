@@ -42,6 +42,7 @@ class Wallet(object):
         :return
         """
         super().__init__()
+        self.last_commissions_paid = 0
         self.history = {"EquityTradingSystem": [],
                         "ProfitLoss": [],
                         "WalletSeries": [],
@@ -64,7 +65,6 @@ class Wallet(object):
         self.last_position = 2
         self.bet_size = 0
         self.tot_pip_pl = 0
-        self.last_commission_paid = 0
         self.leverage = leverage
 
     def step(self,
