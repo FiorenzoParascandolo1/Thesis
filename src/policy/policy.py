@@ -33,7 +33,7 @@ class RolloutBuffer(object):
         :param clear: cleaning signal.
         :return:
         """
-        if len(self.actions) == self.len_memory or clear:
+        if len(self.actions) > self.len_memory or clear:
             del self.actions[:-1]
             del self.states[:-1]
             del self.infos[:-1]
