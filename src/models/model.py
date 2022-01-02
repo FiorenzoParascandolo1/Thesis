@@ -397,19 +397,23 @@ class CoordConvDeepFace(nn.Module):
                                      nn.Tanh(),
                                      nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), stride=(2, 2)),
                                      nn.Tanh())
-        self.stage_3 = nn.Sequential(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=(3, 3)),
-                                     nn.Tanh(),
-                                     nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
+
+        self.stage_3 = nn.Sequential(LocallyConnected2d(input_channels=64,
+                                                        num_channels=64,
+                                                        input_size=(13, 13),
+                                                        kernel_size=(5, 5), strides=(1, 1)),
                                      nn.Tanh())
-        self.stage_4 = nn.Sequential(LocallyConnected2d(input_channels=128,
-                                                        num_channels=128,
+
+        self.stage_4 = nn.Sequential(LocallyConnected2d(input_channels=64,
+                                                        num_channels=64,
+                                                        input_size=(9, 9),
+                                                        kernel_size=(5, 5), strides=(1, 1)),
+                                     nn.Tanh())
+
+        self.stage_5 = nn.Sequential(LocallyConnected2d(input_channels=64,
+                                                        num_channels=64,
                                                         input_size=(5, 5),
                                                         kernel_size=(3, 3), strides=(1, 1)),
-                                     nn.Tanh())
-        self.stage_5 = nn.Sequential(LocallyConnected2d(input_channels=128,
-                                                        num_channels=128,
-                                                        input_size=(3, 3),
-                                                        kernel_size=(2, 2), strides=(1, 1)),
                                      nn.Tanh())
 
         with torch.no_grad():
