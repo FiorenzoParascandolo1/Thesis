@@ -156,7 +156,7 @@ class Environment(StocksEnv):
         :return: (reward, done)
         """
         done = False
-        price_1 = price_2 = denominator = 0
+        price_1 = price_2 = 0
 
         """
         Case 1:
@@ -167,7 +167,6 @@ class Environment(StocksEnv):
         if action[0] == Actions.Sell.value and self._position == Positions.Long:
             price_1 = self.open_prices[self._current_tick - 2] - self.pip
             price_2 = self.prices[self._last_trade_tick] + self.pip
-            denominator = price_2
             done = True
         """
         Case 2:
@@ -178,7 +177,6 @@ class Environment(StocksEnv):
         if action[0] == Actions.Buy.value and self._position == Positions.Short:
             price_1 = self.open_prices[self._last_trade_tick] - self.pip
             price_2 = self.prices[self._current_tick - 2] + self.pip
-            denominator = price_1
             done = True
         """
         Case 3:
@@ -190,7 +188,6 @@ class Environment(StocksEnv):
         if action[0] == Actions.Buy.value and self._position == Positions.Long:
             price_1 = self.prices[self._current_tick - 1]
             price_2 = self.prices[self._current_tick - 2]
-            denominator = price_2
         """
         Case 4:
         if I held a Short position open and decided to sell -> the reward is the profit obtained as if you had opened 
@@ -201,9 +198,8 @@ class Environment(StocksEnv):
         if action[0] == Actions.Sell.value and self._position == Positions.Short:
             price_1 = self.prices[self._current_tick - 2]
             price_2 = self.prices[self._current_tick - 1]
-            denominator = price_1
 
-        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv
+        step_reward = (price_1 - price_2) * self.wallet.cap_inv
 
         return step_reward, done
 
@@ -279,9 +275,9 @@ class Environment(StocksEnv):
         """
         # Profit/loss computation depends from the current position (long/short trade or short selling)
         if self._position == 0:
-            p_l = (observation[-2, 5] - self.pip - self.last_price_long) / self.last_price_long
+            p_l = observation[-2, 5] - self.pip - self.last_price_long
         else:
-            p_l = (self.last_price_short - observation[-2, 5] + self.pip) / self.last_price_short
+            p_l = self.last_price_short - observation[-2, 5] + self.pip
 
         # Compute Hurst exponent
         hurst = compute_Hc(observation[-101:-1, 5], kind='price', simplified=True)[0]

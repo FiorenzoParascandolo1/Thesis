@@ -64,7 +64,7 @@ class ActorCritic(nn.Module):
         if architecture in ['DeepFace']:
             self.actor = DeepFace(pixels=pixels)
             self.critic = DeepFace(pixels=pixels, actor=False)
-        elif architecture in ['Vgg']:
+        elif architecture in ['Vgg', 'Random']:
             self.actor = Vgg(pixels=pixels)
             self.critic = Vgg(pixels=pixels, actor=False)
         elif architecture in ['CoordConvDeepFace']:

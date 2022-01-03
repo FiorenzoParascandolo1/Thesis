@@ -65,7 +65,10 @@ def training_loop(params: dict):
         """
         # Update the policy
         if step % params['UpdateTimestamp'] == 0:
-            policy.update()
+            if params['Architecture'] not in ['Random']:
+                policy.update()
+            else:
+                policy.buffer.clear(clear=True)
 
         done = packed_info[2]
 
