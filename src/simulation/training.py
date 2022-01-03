@@ -1,9 +1,11 @@
 import pandas as pd
-from gym_anytrading.envs import Positions
+from torch.nn import functional as F
 from src.data_utils.preprocessing_utils import clean_dataframe
 from src.policy.policy import PPO
+import torch
 from src.simulation.environment import Environment
 import wandb
+from torch.distributions import Categorical
 
 
 def training_loop(params: dict):
@@ -38,12 +40,18 @@ def training_loop(params: dict):
     step = 1
     # Reset the environment
     observation = env.reset()
-    position = env.get_position().value
 
     while True:
 
         # Select the action
-        trade_action, action_prob, explanation = policy.select_action(observation[0], observation[1])
+        if params['Architecture'] not in ['Random']:
+            trade_action, action_prob, explanation = policy.select_action(observation[0], observation[1])
+        else:
+            explanation = None
+            action_prob = F.softmax(torch.randn(1, 2), dim=1)
+            dist = Categorical(action_prob)
+            trade_action = dist.sample()
+
         # Perform step environment
         packed_info = env.step((trade_action, action_prob, explanation))
 
