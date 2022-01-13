@@ -3,22 +3,18 @@ import torch.nn as nn
 import random
 from torch.distributions import Categorical
 import numpy as np
-from src.models.model import Vgg, CoordConvDeepFace, DeepFace
-from scipy.stats import entropy
+from src.models.model import Vgg, DeepFace, LocallyConnectedNetwork
+import matplotlib.pyplot as plt
 
 
 class RolloutBuffer(object):
-    def __init__(self,
-                 len_memory: int,
-                 horizon: int):
+    def __init__(self):
         """
         Agent's memory
         :param len_memory: buffer length.
         :param horizon: length of the time horizon to be considered for sampling
         :return:
         """
-        self.len_memory = len_memory
-        self.horizon = horizon
 
         self.actions = []
         self.states = []
@@ -34,20 +30,18 @@ class RolloutBuffer(object):
         :param clear: cleaning signal.
         :return:
         """
-        if len(self.actions) > self.len_memory or clear:
-            del self.actions[:-1]
-            del self.states[:-1]
-            del self.infos[:-1]
-            del self.logprobs[:-1]
-            del self.rewards[:-1]
-            del self.is_terminals[:-1]
+        del self.actions[:-1]
+        del self.states[:-1]
+        del self.infos[:-1]
+        del self.logprobs[:-1]
+        del self.rewards[:-1]
+        del self.is_terminals[:-1]
 
     def generate_index(self) -> slice:
         """
         Extract a consecutive sample of elements from the buffer according to the time horizon considered
         """
-        head = random.randint(self.horizon, len(self.rewards) - 1)
-        return slice(head - self.horizon, head, 1)
+        return slice(0, len(self.rewards) - 1, 1)
 
 
 class ActorCritic(nn.Module):
@@ -67,13 +61,15 @@ class ActorCritic(nn.Module):
         elif architecture in ['Vgg', 'Random']:
             self.actor = Vgg(pixels=pixels)
             self.critic = Vgg(pixels=pixels, actor=False)
-        elif architecture in ['CoordConvDeepFace']:
-            self.actor = CoordConvDeepFace(pixels=pixels)
-            self.critic = CoordConvDeepFace(pixels=pixels, actor=False)
+        elif architecture in ['LocallyConnectedNetwork']:
+            self.actor = LocallyConnectedNetwork(pixels=pixels)
+            self.critic = LocallyConnectedNetwork(pixels=pixels, actor=False)
 
         self.pixels = pixels
         self.manage_symmetries = manage_symmetries
         self.explanations = explanations
+        self.explanation_tensor = np.zeros((pixels * 2, pixels * 2))
+        self.step = 0
 
     def act(self,
             state: torch.Tensor,
@@ -104,6 +100,14 @@ class ActorCritic(nn.Module):
             action_probs[0, action].backward()
             saliency_map = torch.abs(state.grad).squeeze()
             saliency_map = np.array(torch.mean(saliency_map, dim=0))
+            saliency_map = 2 * (saliency_map - min(map(min, saliency_map))) \
+                           / (max(map(max, saliency_map)) - min(map(min, saliency_map))) - 1
+
+            self.step += 1
+
+            if self.step >= 25000:
+                self.explanation_tensor += saliency_map
+
             explanation = self.compute_explanations(saliency_map)
 
         action_logprob = dist.log_prob(action)
@@ -186,17 +190,19 @@ class PPO:
         self.lmbda = params['Lambda']
         self.epochs = params['Epochs']
         self.explain = params['Render']
-        self.buffer = RolloutBuffer(params['LenMemory'], params['Horizon'])
+        self.buffer = RolloutBuffer()
         self.policy = ActorCritic(params['Pixels'],
                                   params['Architecture'],
                                   params['Explanations'],
                                   params['ManageSymmetries'])
         self.optimizer = torch.optim.Adam([{'params': self.policy.actor.parameters(), 'lr': params['Lr']},
                                            {'params': self.policy.critic.parameters(), 'lr': params['Lr']}])
+
         self.policy_old = ActorCritic(params['Pixels'],
                                       params['Architecture'],
                                       params['Explanations'],
                                       params['ManageSymmetries'])
+
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.policy_old.eval()
         self.MseLoss = nn.MSELoss()
@@ -215,9 +221,6 @@ class PPO:
 
         action, action_logprob, action_prob, explanation = self.policy_old.act(state, info, self.explain)
 
-        if self.explain:
-            self.optimizer.zero_grad()
-
         self.buffer.states.append(state)
         self.buffer.infos.append(info)
         self.buffer.actions.append(action)
@@ -229,92 +232,61 @@ class PPO:
         """
         Update the network
         """
-        if len(self.buffer.actions) > self.buffer.horizon:
-            indexes = self.buffer.generate_index()
+        indexes = self.buffer.generate_index()
 
-            policy_loss_wandb = 0
-            value_loss_wandb = 0
-            entropy_loss_wandb = 0
+        # convert list to tensor
+        old_states = torch.squeeze(torch.stack(self.buffer.states[indexes], dim=0)).detach()
+        old_infos = torch.squeeze(torch.stack(self.buffer.infos[indexes], dim=0)).detach()
+        old_actions = torch.squeeze(torch.stack(self.buffer.actions[indexes], dim=0)).detach()
+        old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs[indexes], dim=0)).detach()
+        terminals = self.buffer.is_terminals[indexes]
+        rewards = torch.tensor(self.buffer.rewards[indexes])
 
-            # convert list to tensor
-            old_states = torch.squeeze(torch.stack(self.buffer.states[indexes], dim=0)).detach()
-            old_infos = torch.squeeze(torch.stack(self.buffer.infos[indexes], dim=0)).detach()
-            old_actions = torch.squeeze(torch.stack(self.buffer.actions[indexes], dim=0)).detach()
-            old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs[indexes], dim=0)).detach()
-            terminals = self.buffer.is_terminals[indexes]
-            rewards = torch.tensor(self.buffer.rewards[indexes])
+        for i in range(self.epochs):
 
-            for i in range(self.epochs):
+            # Evaluating old actions and values
+            logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
+                                                                        info=old_infos,
+                                                                        action=old_actions)
 
-                # Evaluating old actions and values
-                logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
-                                                                            info=old_infos,
-                                                                            action=old_actions)
+            returns = []
+            future_gae = 0
+            for t in reversed(range(len(rewards) - 1)):
+                delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
+                gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
+                returns.insert(0, gaes + state_values[t])
+                # Reinitialization of future_gae at the beginning of a new episode
+                future_gae *= int(not (terminals[t]))
+            returns = torch.tensor(returns, dtype=torch.float32)
 
-                returns = []
-                future_gae = 0
-                for t in reversed(range(len(rewards) - 1)):
-                    delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
-                    gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
-                    returns.insert(0, gaes + state_values[t])
-                    # Reinitialization of future_gae at the beginning of a new episode
-                    future_gae *= int(not (terminals[t]))
-                returns = torch.tensor(returns, dtype=torch.float32)
+            # Normalizing the rewards
+            returns = (returns - returns.mean()) / (returns.std() + 1e-7)
+            # match state_values tensor dimensions with rewards tensor
+            state_values = torch.squeeze(state_values)
+            # Finding the ratio (pi_theta / pi_theta__old)
+            ratios = torch.exp(logprobs[:-1] - old_logprobs[:-1].detach())
+            # Finding Surrogate Loss
+            advantages = returns - state_values[:-1].detach()
+            surr1 = ratios * advantages
+            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
 
-                # Normalizing the rewards
-                returns = (returns - returns.mean()) / (returns.std() + 1e-7)
-                # match state_values tensor dimensions with rewards tensor
-                state_values = torch.squeeze(state_values)
-                # Finding the ratio (pi_theta / pi_theta__old)
-                ratios = torch.exp(logprobs[:-1] - old_logprobs[:-1].detach())
-                # Finding Surrogate Loss
-                advantages = returns - state_values[:-1].detach()
-                surr1 = ratios * advantages
-                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+            policy_loss = -torch.min(surr1, surr2).mean()
+            value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], returns)
+            entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
+            # final loss of clipped objective PPO
+            loss = policy_loss + value_loss + entropy_loss
 
-                policy_loss = -torch.min(surr1, surr2).mean()
-                value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], returns)
-                entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
-                # final loss of clipped objective PPO
-                loss = policy_loss + value_loss + entropy_loss
+            # take gradient step
+            self.optimizer.zero_grad()
+            loss.backward(retain_graph=True)
+            self.optimizer.step()
 
-                # take gradient step
-                self.optimizer.zero_grad()
-                loss.backward(retain_graph=True)
-                self.optimizer.step()
-
-                policy_loss_wandb += policy_loss.item()
-                value_loss_wandb += value_loss.item()
-                entropy_loss_wandb += entropy_loss.item()
-
-            self.wandb.log({"training/policy_loss": policy_loss_wandb / self.epochs,
-                            "training/value_loss": value_loss_wandb / self.epochs,
-                            "training/entropy_loss": entropy_loss_wandb / self.epochs})
-
-            # Copy new weights into old policy
-            self.policy_old.load_state_dict(self.policy.state_dict())
+        # Copy new weights into old policy
+        self.policy_old.load_state_dict(self.policy.state_dict())
 
         # clear buffer
         self.buffer.clear()
 
-    def update_memory_for_finite_trajectories(self,
-                                              reward: float):
-
-        self.buffer.infos.append(self.buffer.infos[-1])
-        self.buffer.logprobs.append(self.buffer.logprobs[-1])
-        self.buffer.states.append(self.buffer.states[-1])
-        self.buffer.actions.append(self.buffer.actions[-1])
-        self.buffer.is_terminals.append(False)
-        self.buffer.rewards.append(reward)
-
-    def scheduler(self,
-                  lr: float) -> None:
-        """
-        Update the learning rate
-        param lr: new learning rate
-        """
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = lr
 
     def save(self,
              checkpoint_path: str) -> None:

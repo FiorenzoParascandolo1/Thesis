@@ -48,7 +48,8 @@ class Wallet(object):
                         "WalletSeries": [],
                         "Position": [],
                         "PipPL": [],
-                        "Commissions": []}
+                        "Commissions": [],
+                        "Positions": []}
 
         self.wandb = wandb
         self.starting_wallet = wallet
@@ -64,6 +65,7 @@ class Wallet(object):
         self.tot_commissions = 0
         self.bet_size = 0
         self.tot_pip_pl = 0
+        self.last_commission_paid = 0
         self.leverage = leverage
 
     def step(self,
@@ -82,11 +84,10 @@ class Wallet(object):
         :param shares_months: number of shares traded in the current month
         :return: info
         """
-        equity_ts_step, pl_step, wallet_step, commission, pip_pl = \
+        equity_ts_step, pl_step, wallet_step, commission, pip_pl, position_step = \
             self._compute_info(action[0], price_enter, last_price, current_position)
 
         self.tot_commissions += commission
-        self.last_commission_paid = commission
         self.tot_pip_pl += pip_pl
 
         self._update_cap_inv(action)
@@ -96,7 +97,8 @@ class Wallet(object):
             ProfitLoss=pl_step,
             WalletSeries=wallet_step,
             PipPL=pip_pl,
-            Commissions=commission)
+            Commissions=commission,
+            Positions=position_step)
 
         self._update_history(info)
 
@@ -145,8 +147,10 @@ class Wallet(object):
         pip_pl = 0
         equity_ts_step = 0
         pl_step = 0
+        position_step = None
         wallet_step = self.wallet
         self.last_position = current_position
+        self.last_commissions_paid = 0
 
         if action == 1 and current_position == 1:
             pl_step = (last_price - self.pip - price_enter + self.pip) / (price_enter + self.pip) * self.cap_inv
@@ -161,7 +165,9 @@ class Wallet(object):
         if action == 0 and current_position == 1:
             pip_pl = last_price - self.pip - price_enter + self.pip
             pl_step = pip_pl / (price_enter + self.pip) * self.cap_inv
-            commissions = self.pip * 2 * self.cap_inv
+            commissions = self.pip * 2 * self.cap_inv / (price_enter + self.pip)
+            position_step = 0
+            self.last_commissions_paid = commissions
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
             self.total_reward = wallet_step - self.starting_wallet
@@ -181,7 +187,9 @@ class Wallet(object):
         if action == 1 and current_position == 0:
             pip_pl = price_enter - self.pip - last_price + self.pip
             pl_step = pip_pl / (price_enter - self.pip) * self.cap_inv
-            commissions = self.pip * 2 * self.cap_inv
+            commissions = self.pip * 2 * self.cap_inv / (price_enter - self.pip)
+            position_step = 1
+            self.last_commissions_paid = commissions
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
             self.total_reward = wallet_step - self.starting_wallet
@@ -198,8 +206,11 @@ class Wallet(object):
             # Update the number of trading trajectory completed
             self.tot_operation += 1
 
+        if len(self.history["ProfitLoss"]) == 0:
+            position_step = action
+
         # Update equity benchmark
-        return equity_ts_step, pl_step, wallet_step, commissions, pip_pl
+        return equity_ts_step, pl_step, wallet_step, commissions, pip_pl, position_step
 
     def _update_cap_inv(self,
                         action: tuple):
@@ -209,8 +220,7 @@ class Wallet(object):
         :param action: (action, action_prob)
         """
         if (action[0] == 1 and self.last_position == 0) or \
-                (action[0] == 0 and self.last_position == 1):
-            # self.cap_inv = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor) * self.wallet
+                (action[0] == 0 and self.last_position == 1) or len(self.history["ProfitLoss"]) == 1:
             self.bet_size = math.exp((action[1][0][action[0]].item() - 1) / self.bet_size_factor)
             if self.leverage:
                 leverage = int(30 * self.bet_size)
@@ -256,6 +266,6 @@ class Wallet(object):
         self.wandb.run.summary["Maximum_Drawdown"] = mdd
         self.wandb.run.summary["Romad"] = romad
         self.wandb.run.summary["Std_deviation"] = std_deviation
-        self.wandb.run.summary["Commissions"] = sum(self.history['Commissions'])
+        self.wandb.run.summary["Commissions"] = sum(self.history['Commissions']) / self.starting_wallet * 100
         self.wandb.run.summary["Profit/Loss"] = self.wallet - self.starting_wallet
         self.wandb.run.summary["Total_Number_Trades"] = self.tot_operation

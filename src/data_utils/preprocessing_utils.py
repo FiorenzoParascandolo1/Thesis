@@ -12,44 +12,6 @@ MAX_HOUR = 23
 MAX_MINUTE = 55
 
 
-def period_arc_cos(x):
-    """
-    Compute the elements required for GADF/GASF transformations
-    :param x: time series to be processed.
-    :return: the arccos of the rescaled time series.
-    """
-    return np.arccos(rescaling(x.astype(np.float32)))
-
-
-def rescaling(x):
-    """
-    Rescale a time series in [0, 1] range
-    :param x: time series to be processed.
-    :return: rescaled time series.
-    """
-    return ((x - max(x)) + (x - min(x))) / (max(x) - min(x) + 1e-5)
-
-
-def gasf(x):
-    """
-    The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
-    GASF = [cos(θi + θj)]
-    :param x: time series to be processed.
-    :return: GASF matrix.
-    """
-    return np.array([[np.cos(i + j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])
-
-
-def gadf(x):
-    """
-    The Gramian Angular Field (GAF) imaging is an elegant way to encode time series as images.
-    GADF = [sin(θi - θj)]
-    :param x: time series to be processed.
-    :return: GADF matrix.
-    """
-    return np.array([[np.sin(i - j) for j in period_arc_cos(x)] for i in period_arc_cos(x)])
-
-
 def add_features_on_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     """
     Add time information as columns:
@@ -143,21 +105,6 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = add_features_on_time(df)
     df = df[df['volume'] != 0]
 
-    # Select 9:30 <= hours:minute <= 16.00
-
-    """
-    df = df[df['Hour'] * MAX_HOUR < 17]
-    df = df[df['Hour'] * MAX_HOUR > 9]
-    df['Select_1'] = df['Hour'] * MAX_HOUR < 16
-    df['Select_2'] = (df['Minute'] * MAX_MINUTE < 5) & (df['Hour'] * MAX_HOUR >= 16)
-    df['Select_3'] = df['Select_1'] | df['Select_2']
-    df = df[df['Select_3']]
-    df['Select_1'] = df['Hour'] * MAX_HOUR >= 10
-    df['Select_2'] = (df['Minute'] * MAX_MINUTE >= 30) & (df['Hour'] * MAX_HOUR >= 9)
-    df['Select_3'] = df['Select_1'] | df['Select_2']
-    df = df[df['Select_3']]
-    """
-
     return df
 
 
@@ -214,18 +161,25 @@ class StackImages(object):
     https://www.iris.unina.it/retrieve/handle/11588/807057/337910/IEEE_CAA_Journal_of_Automatica_Sinica-3.pdf
     """
 
+    def __init__(self,
+                 symmetry: bool):
+
+        self.symmetry = symmetry
+
     def __call__(self, images: list) -> torch.Tensor:
         """
         :param images: list of GAF images.
         :return: final stacked GAF image.
         """
 
-        # Concatenate the first two sub-images along the columns
-        up_image = torch.cat([images[0], images[1]], dim=1)
-        # Concatenate the other two sub-images along the columns
-        down_image = torch.cat([images[2], images[3]], dim=1)
-        # Concatenate 'up' and 'down' images along the rows
-        image = torch.cat([up_image, down_image], dim=2)
+        if self.symmetry:
+            up_image = torch.cat([images[0], torch.fliplr(images[2])], dim=2)
+            down_image = torch.cat([torch.flipud(images[1]), torch.flipud(torch.fliplr(images[3]))], dim=2)
+            image = torch.cat([up_image, down_image], dim=1)
+        else:
+            up_image = torch.cat([images[0], images[2]], dim=2)
+            down_image = torch.cat([images[2], images[3]], dim=1)
+            image = torch.cat([up_image, down_image], dim=2)
 
         return image
 
@@ -271,20 +225,6 @@ class ManageSymmetries(object):
         """
         :param images: list of GAF images.
         :return: list of images preprocessed considering symmetries
-        """
-        """
-        plt.imshow(images[0][2:5, :, :].detach().permute(1, 2, 0).numpy())
-        plt.show()
-        plt.imshow(self.symmetry_odd[2:5, :, :].detach().permute(1, 2, 0).numpy())
-        plt.show()
-
-        plt.imshow(images[1][2:5, :, :].detach().permute(1, 2, 0).numpy())
-        plt.show()
-        plt.imshow(self.symmetry_even[2:5, :, :].detach().permute(1, 2, 0).numpy())
-        plt.show()
-
-        plt.imshow((images[0] * self.symmetry_odd + images[0 + 1] * self.symmetry_even)[2:5, :, :].detach().permute(1, 2, 0).numpy())
-        plt.show()
         """
         return [images[i] * self.symmetry_odd + images[i + 1] * self.symmetry_even
                 for i in range(0, len(images) - 1, 2)]
@@ -369,6 +309,7 @@ class ManagePeriods(object):
 
         df = pd.DataFrame({'Date': date, 'Open': open, 'High': high, 'Low': low, 'Volume': volume,
                            'Close': close}).iloc[::-1]
+
         df['Date'] = df['Date'].apply(lambda x: datetime.fromisoformat(x))
         return df.set_index('Date')
 

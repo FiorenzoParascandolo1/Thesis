@@ -1,12 +1,10 @@
 from gym_anytrading.envs import StocksEnv, Actions, Positions
 import pandas as pd
-from hurst import compute_Hc
 import math
 import numpy as np
 from src.wallet.wallet import Wallet
 import torch
-from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManageSymmetries, \
-    IdentityTransformation, ManagePeriods
+from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManagePeriods
 from torchvision.transforms import transforms
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -36,13 +34,13 @@ def my_process_data(env):
 def return_action_name(action: int,
                        position: int) -> str:
     if position == 1 and action == 1:
-        return "HOLD"
+        return "HOLD LONG"
     elif position == 1 and action == 0:
-        return "SELL"
+        return "SHORT"
     elif position == 0 and action == 1:
-        return "BUY"
+        return "LONG"
     elif position == 0 and action == 0:
-        return "DO NOTHING"
+        return "HOLD SHORT"
 
 
 class Environment(StocksEnv):
@@ -106,13 +104,13 @@ class Environment(StocksEnv):
             self.ax2 = self.fig.add_subplot(self.gs[1, 1])
             self.ax3 = self.fig.add_subplot(self.gs[0, :])
             # Titles of the performance indices of the table
-            self.raw_table_performances = ["Profit/Loss",
+            self.raw_table_performances = ["Net P/L",
                                            "Commissions",
                                            "Gross Assets",
                                            "Liquid Assets",
                                            "Invested Assets",
-                                           "Tot. Profit/Loss",
-                                           "Tot. Profit/Loss (%)",
+                                           "Tot. P/L",
+                                           "Tot. P/L (%)",
                                            "Commissions Paid",
                                            "Std",
                                            "Sharpe Ratio",
@@ -127,9 +125,7 @@ class Environment(StocksEnv):
         self.transform = transforms.Compose([GADFTransformation(periods=periods,
                                                                 pixels=pixels,
                                                                 gaf=gaf),
-                                             ManageSymmetries(pixels=pixels) if manage_symmetries
-                                             else IdentityTransformation(),
-                                             StackImages()])
+                                             StackImages(symmetry=manage_symmetries)])
         self.last_price_short = 0
         self.last_price_long = 0
         self.last_obs = None
@@ -283,9 +279,6 @@ class Environment(StocksEnv):
         else:
             p_l = (self.last_price_short - observation[-2, 5] + self.pip) / self.last_price_short
 
-        # Compute Hurst exponent
-        hurst = compute_Hc(observation[-101:-1, 5], kind='price', simplified=True)[0]
-
         if self._position.value == 0:
             short = 1.0
             long = 0.0
@@ -294,7 +287,6 @@ class Environment(StocksEnv):
             long = 1.0
 
         return torch.tensor([p_l,
-                             hurst,
                              long,
                              short,
                              observation[-2, 6],
@@ -312,7 +304,7 @@ class Environment(StocksEnv):
         self.update_olhc_graphs(action[2])
         # Observation axis computation
         buf = io.BytesIO()
-        pio.write_image(self.olhc_1, buf, format='jpg', scale=3)
+        pio.write_image(self.olhc_1, buf, format='jpg', scale=4)
         img = Image.open(buf)
         self.ax1.clear()
         self.ax1.axis('off')
@@ -320,7 +312,7 @@ class Environment(StocksEnv):
 
         # Explanation axis computation
         buf = io.BytesIO()
-        pio.write_image(self.olhc_2, buf, format='jpg', scale=3)
+        pio.write_image(self.olhc_2, buf, format='jpg', scale=4)
         img = Image.open(buf)
         self.ax2.clear()
         self.ax2.imshow(img)
@@ -347,7 +339,6 @@ class Environment(StocksEnv):
 
         # Show the current step
         plt.draw()
-        # plt.show(block=False)
         plt.pause(0.5)
 
         # Reset Observation and Explanation plots
@@ -359,19 +350,17 @@ class Environment(StocksEnv):
     def compute_table_values(self):
 
         # Compute table_values and relative colours for the current step
-        table_values = [[str(round(self.wallet.history["ProfitLoss"][-1], 2)) + "$",
-                         str(round(-self.wallet.last_commissions_paid, 2)) + "$",
-                         str(round(self.wallet.history["WalletSeries"][-1], 2)) + "$",
-                         str(round(self.wallet.wallet - self.wallet.cap_inv, 2)) + "$"
-                         if self.wallet.last_position == 1 else str(round(self.wallet.wallet, 2)) + "$",
-                         str(round(self.wallet.cap_inv, 2)) + "$" if self.wallet.last_position == 1 else str(
-                             0.00) + "$",
+        table_values = [[str(round(self.wallet.history["ProfitLoss"][-1], 2)),
+                         str(round(-self.wallet.last_commissions_paid, 2)),
+                         str(round(self.wallet.history["WalletSeries"][-1], 2)),
+                         str(round(self.wallet.wallet - self.wallet.cap_inv, 2)),
+                         str(round(self.wallet.cap_inv, 2)),
                          str(round(self.wallet.history["WalletSeries"][-1] -
-                                   self.wallet.starting_wallet, 2)) + "$",
+                                   self.wallet.starting_wallet, 2)),
                          str(round((self.wallet.history["WalletSeries"][-1] -
                                     self.wallet.starting_wallet) / self.wallet.starting_wallet,
                                    5)),
-                         str(round(-self.wallet.tot_commissions, 2)) + "$",
+                         str(round(-self.wallet.tot_commissions, 2)),
                          str(round(self.wallet.std_deviation, 5)),
                          str(round(self.wallet.sharpe_ratio, 2)),
                          str(-round(self.wallet.mdd, 2)),
@@ -433,7 +422,7 @@ class Environment(StocksEnv):
                                                  close=self.last_obs[i - 1]['Close'].tolist()),
                                   row=row, col=col)
 
-            # Update the explanation plot. TODO: adjust for explanation
+            # Update the explanation plot.
             open = [np.nan for _ in range(self.pixels)]
             high = [np.nan for _ in range(self.pixels)]
             low = [np.nan for _ in range(self.pixels)]
@@ -456,18 +445,11 @@ class Environment(StocksEnv):
                                                  low=low,
                                                  close=close),
                                   row=row, col=col)
-            """
-            self.olhc_2.add_trace(go.Candlestick(x=x,
-                                                 open=self.last_obs[i - 1]['Open'].tolist(),
-                                                 high=self.last_obs[i - 1]['High'].tolist(),
-                                                 low=self.last_obs[i - 1]['Low'].tolist(),
-                                                 close=self.last_obs[i - 1]['Close'].tolist()),
-                                  row=row, col=col)
-            """
+
             # the BUY / SELL labels are added to the graph of the observation with minimum granularity
             if i == 1:
                 # Get the history of the positions in the market (pixel = number of observations for each granularity)
-                positions = self.wallet.history["Position"][-self.pixels:]
+                positions = self.wallet.history["Positions"][-self.pixels:]
                 # When there are less than pixels positions, positions list is filled with None values
                 if len(positions) < self.pixels:
                     positions = positions[0:]
@@ -476,12 +458,12 @@ class Environment(StocksEnv):
 
                 # Compute marker position for labels BUY/SELL
                 markers = [self.last_obs[i - 1]['High'].tolist()[j] +
-                           0.15 if self.last_obs[i - 1]['Close'].tolist()[j] > self.last_obs[i - 1]['Open'].tolist()[j]
-                           else self.last_obs[i - 1]['Low'].tolist()[j] - 0.15 for j in range(len(positions))]
+                           0.0001 if self.last_obs[i - 1]['Close'].tolist()[j] > self.last_obs[i - 1]['Open'].tolist()[j]
+                           else self.last_obs[i - 1]['Low'].tolist()[j] - 0.0001 for j in range(len(positions))]
                 # Set to np.nan the markers for actions that not change the position on the market
                 markers = [markers[j] if positions[j] is not None else np.nan for j in range(len(positions))]
                 # Set text label for not None markers
-                text = ["BUY" if positions[i] == 1 else "SELL" if positions[i] == 0 else np.nan
+                text = ["LONG" if positions[i] == 1 else "SHORT" if positions[i] == 0 else np.nan
                         for i in range(len(positions))]
                 # Add text labels to the observation plot
                 self.olhc_1.add_trace(go.Scatter(x=x,
@@ -497,10 +479,6 @@ class Environment(StocksEnv):
                                   xaxis2=dict(rangeslider=dict(visible=False)),
                                   xaxis3=dict(rangeslider=dict(visible=False)),
                                   xaxis4=dict(rangeslider=dict(visible=False)),
-                                  xaxis5=dict(rangeslider=dict(visible=False)),
-                                  xaxis6=dict(rangeslider=dict(visible=False)),
-                                  xaxis7=dict(rangeslider=dict(visible=False)),
-                                  xaxis8=dict(rangeslider=dict(visible=False)),
                                   margin=dict(b=0, l=0, r=0, t=50),
                                   title={'text': "Observation",
                                          'y': 0.99,
@@ -511,24 +489,16 @@ class Environment(StocksEnv):
                                   autosize=False,
                                   showlegend=False,
                                   width=1500,
-                                  height=1500)
+                                  height=1250)
 
         self.olhc_2.update_layout(xaxis1=dict(rangeslider=dict(visible=False)),
                                   xaxis2=dict(rangeslider=dict(visible=False)),
                                   xaxis3=dict(rangeslider=dict(visible=False)),
                                   xaxis4=dict(rangeslider=dict(visible=False)),
-                                  xaxis5=dict(rangeslider=dict(visible=False)),
-                                  xaxis6=dict(rangeslider=dict(visible=False)),
-                                  xaxis7=dict(rangeslider=dict(visible=False)),
-                                  xaxis8=dict(rangeslider=dict(visible=False)),
                                   yaxis1=dict(range=[min(self.last_obs[0]['Low'].tolist()), max(self.last_obs[0]['High'].tolist())]),
                                   yaxis2=dict(range=[min(self.last_obs[1]['Low'].tolist()), max(self.last_obs[1]['High'].tolist())]),
                                   yaxis3=dict(range=[min(self.last_obs[2]['Low'].tolist()), max(self.last_obs[2]['High'].tolist())]),
                                   yaxis4=dict(range=[min(self.last_obs[3]['Low'].tolist()), max(self.last_obs[3]['High'].tolist())]),
-                                  yaxis5=dict(range=[min(self.last_obs[4]['Low'].tolist()), max(self.last_obs[4]['High'].tolist())]),
-                                  yaxis6=dict(range=[min(self.last_obs[5]['Low'].tolist()), max(self.last_obs[5]['High'].tolist())]),
-                                  yaxis7=dict(range=[min(self.last_obs[6]['Low'].tolist()), max(self.last_obs[6]['High'].tolist())]),
-                                  yaxis8=dict(range=[min(self.last_obs[7]['Low'].tolist()), max(self.last_obs[7]['High'].tolist())]),
 
                                   margin=dict(b=0, l=0, r=0, t=50),
                                   title={'text': "Explanation",
@@ -540,4 +510,4 @@ class Environment(StocksEnv):
                                   autosize=False,
                                   showlegend=False,
                                   width=1500,
-                                  height=1500)
+                                  height=1250)

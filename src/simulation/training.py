@@ -6,6 +6,7 @@ import torch
 from src.simulation.environment import Environment
 import wandb
 from torch.distributions import Categorical
+import matplotlib.pyplot as plt
 
 
 def training_loop(params: dict):
@@ -14,7 +15,7 @@ def training_loop(params: dict):
     param dict: hyper parameters
     returns:
     """
-    wandb.init(project="forex_trading", entity="fiorenzoparascandolo", config=params)
+    wandb.init(project="forex_experiments", entity="fiorenzoparascandolo", config=params)
 
     df = pd.read_csv(params["FileName"], delimiter="\t")
     df = clean_dataframe(df)
@@ -55,22 +56,10 @@ def training_loop(params: dict):
         # Perform step environment
         packed_info = env.step((trade_action, action_prob, explanation))
 
-        new_position = env.get_position().value
-
         # Update buffer with done and reward
         policy.buffer.is_terminals.append(packed_info[4])
         policy.buffer.rewards.append(packed_info[1])
 
-        """
-        if packed_info[3] is not None:
-            # Check if a transition buy/sell is finished
-            # Print the profit/loss obtained until the current step
-            print("step:", step,
-                  "position:", position,
-                  "action:", trade_action,
-                  "new_position:", new_position,
-                  "tot_reward:", env.wallet.total_gain + env.wallet.total_loss)
-        """
         # Update the policy
         if step % params['UpdateTimestamp'] == 0:
             if params['Architecture'] not in ['Random']:
@@ -82,13 +71,6 @@ def training_loop(params: dict):
 
         # If the experiment is finished generate the dataframe for performances
         if done:
-            """
-            pd.DataFrame({"EquityTradingSystem": env.wallet.history["EquityTradingSystem"],
-                          "EquityBenchmark": env.wallet.history["EquityBenchmark"],
-                          "ProfitLoss": env.wallet.history["ProfitLoss"],
-                          "WalletSeries": env.wallet.history["WalletSeries"],
-                          "Position": env.wallet.history["Position"]}).to_csv('report.csv')
-            """
             # Render performances
             env.wallet.wandb_final()
             # Stop the experiment
@@ -96,5 +78,4 @@ def training_loop(params: dict):
 
         # Update position, observation and step number
         observation = packed_info[0]
-        position = new_position
         step += 1

@@ -39,3 +39,4 @@ def plot_dataframe(data: pd.DataFrame,
                     color=plt.get_cmap('tab10')(labels))
     plt.tight_layout()
     plt.show()
+
