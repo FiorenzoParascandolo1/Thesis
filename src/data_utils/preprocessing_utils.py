@@ -178,8 +178,8 @@ class StackImages(object):
             image = torch.cat([up_image, down_image], dim=1)
         else:
             up_image = torch.cat([images[0], images[2]], dim=2)
-            down_image = torch.cat([images[2], images[3]], dim=1)
-            image = torch.cat([up_image, down_image], dim=2)
+            down_image = torch.cat([images[2], images[3]], dim=2)
+            image = torch.cat([up_image, down_image], dim=1)
 
         return image
 
@@ -292,10 +292,6 @@ class ManagePeriods(object):
         :param series: time-series observation.
         :param period: period is used to aggregate time series information in order to create a less granular one
         :return: the new time-series created
-        """
-        """
-        if period == 1:
-            return pd.DataFrame(series[-1:0:-period][0:self.pixels]).iloc[::-1]
         """
         close = series[:, 5][-1:0:-period][0:self.pixels].astype(np.float64)
         date = series[:, 0][-1:0:-period][0:self.pixels]
