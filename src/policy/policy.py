@@ -4,18 +4,18 @@ import random
 from torch.distributions import Categorical
 import numpy as np
 from src.models.model import Vgg, DeepFace, LocallyConnectedNetwork
-import matplotlib.pyplot as plt
-
+import random
 
 class RolloutBuffer(object):
-    def __init__(self):
+    def __init__(self,
+                 batch_size: int):
         """
         Agent's memory
         :param len_memory: buffer length.
         :param horizon: length of the time horizon to be considered for sampling
         :return:
         """
-
+        self.batch_size = batch_size
         self.actions = []
         self.states = []
         self.infos = []
@@ -37,11 +37,18 @@ class RolloutBuffer(object):
         del self.rewards[:-1]
         del self.is_terminals[:-1]
 
-    def generate_index(self) -> slice:
+    def generate_index(self) -> list:
         """
         Extract a consecutive sample of elements from the buffer according to the time horizon considered
         """
-        return slice(0, len(self.rewards) - 1, 1)
+        indexes = []
+        for i in range(0, len(self.infos), self.batch_size):
+            if i + self.batch_size > len(self.infos) - 1:
+                indexes.append(slice(i, i + self.batch_size - 1, 1))
+            else:
+                indexes.append(slice(i, i + self.batch_size, 1))
+        random.shuffle(indexes)
+        return indexes
 
 
 class ActorCritic(nn.Module):
@@ -190,7 +197,7 @@ class PPO:
         self.lmbda = params['Lambda']
         self.epochs = params['Epochs']
         self.explain = params['Render']
-        self.buffer = RolloutBuffer()
+        self.buffer = RolloutBuffer(params['BatchSize'])
         self.policy = ActorCritic(params['Pixels'],
                                   params['Architecture'],
                                   params['Explanations'],
@@ -232,61 +239,61 @@ class PPO:
         """
         Update the network
         """
-        indexes = self.buffer.generate_index()
+        indexes_batch = self.buffer.generate_index()
 
-        # convert list to tensor
-        old_states = torch.squeeze(torch.stack(self.buffer.states[indexes], dim=0)).detach()
-        old_infos = torch.squeeze(torch.stack(self.buffer.infos[indexes], dim=0)).detach()
-        old_actions = torch.squeeze(torch.stack(self.buffer.actions[indexes], dim=0)).detach()
-        old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs[indexes], dim=0)).detach()
-        terminals = self.buffer.is_terminals[indexes]
-        rewards = torch.tensor(self.buffer.rewards[indexes])
+        for indexes in indexes_batch:
+            # convert list to tensor
+            old_states = torch.squeeze(torch.stack(self.buffer.states[indexes], dim=0)).detach()
+            old_infos = torch.squeeze(torch.stack(self.buffer.infos[indexes], dim=0)).detach()
+            old_actions = torch.squeeze(torch.stack(self.buffer.actions[indexes], dim=0)).detach()
+            old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs[indexes], dim=0)).detach()
+            terminals = self.buffer.is_terminals[indexes]
+            rewards = torch.tensor(self.buffer.rewards[indexes])
 
-        for i in range(self.epochs):
+            for i in range(self.epochs):
 
-            # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
-                                                                        info=old_infos,
-                                                                        action=old_actions)
+                # Evaluating old actions and values
+                logprobs, state_values, dist_entropy = self.policy.evaluate(state=old_states,
+                                                                            info=old_infos,
+                                                                            action=old_actions)
 
-            returns = []
-            future_gae = 0
-            for t in reversed(range(len(rewards) - 1)):
-                delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
-                gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
-                returns.insert(0, gaes + state_values[t])
-                # Reinitialization of future_gae at the beginning of a new episode
-                future_gae *= int(not (terminals[t]))
-            returns = torch.tensor(returns, dtype=torch.float32)
+                returns = []
+                future_gae = 0
+                for t in reversed(range(len(rewards) - 1)):
+                    delta = rewards[t] + self.gamma * state_values[t + 1] * int(not (terminals[t])) - state_values[t]
+                    gaes = future_gae = delta + self.gamma * self.lmbda * int(not (terminals[t])) * future_gae
+                    returns.insert(0, gaes + state_values[t])
+                    # Reinitialization of future_gae at the beginning of a new episode
+                    future_gae *= int(not (terminals[t]))
+                returns = torch.tensor(returns, dtype=torch.float32)
 
-            # Normalizing the rewards
-            returns = (returns - returns.mean()) / (returns.std() + 1e-7)
-            # match state_values tensor dimensions with rewards tensor
-            state_values = torch.squeeze(state_values)
-            # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs[:-1] - old_logprobs[:-1].detach())
-            # Finding Surrogate Loss
-            advantages = returns - state_values[:-1].detach()
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+                # Normalizing the rewards
+                returns = (returns - returns.mean()) / (returns.std() + 1e-7)
+                # match state_values tensor dimensions with rewards tensor
+                state_values = torch.squeeze(state_values)
+                # Finding the ratio (pi_theta / pi_theta__old)
+                ratios = torch.exp(logprobs[:-1] - old_logprobs[:-1].detach())
+                # Finding Surrogate Loss
+                advantages = returns - state_values[:-1].detach()
+                surr1 = ratios * advantages
+                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
 
-            policy_loss = -torch.min(surr1, surr2).mean()
-            value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], returns)
-            entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
-            # final loss of clipped objective PPO
-            loss = policy_loss + value_loss + entropy_loss
+                policy_loss = -torch.min(surr1, surr2).mean()
+                value_loss = self.values_loss_coefficient * self.MseLoss(state_values[:-1], returns)
+                entropy_loss = -self.entropy_loss_coefficient * dist_entropy[:-1].mean()
+                # final loss of clipped objective PPO
+                loss = policy_loss + value_loss + entropy_loss
 
-            # take gradient step
-            self.optimizer.zero_grad()
-            loss.backward(retain_graph=True)
-            self.optimizer.step()
+                # take gradient step
+                self.optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                self.optimizer.step()
 
         # Copy new weights into old policy
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         # clear buffer
         self.buffer.clear()
-
 
     def save(self,
              checkpoint_path: str) -> None:

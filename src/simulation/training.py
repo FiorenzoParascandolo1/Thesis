@@ -61,7 +61,7 @@ def training_loop(params: dict):
         policy.buffer.rewards.append(packed_info[1])
 
         # Update the policy
-        if step % params['UpdateTimestamp'] == 0:
+        if len(policy.buffer.actions) >= params['LenMemory']:
             if params['Architecture'] not in ['Random']:
                 policy.update()
             else:

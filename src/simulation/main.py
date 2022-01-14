@@ -6,7 +6,7 @@ params = {
     # Environment
     'FileName': "EURAUD_M5.csv",
     'EnvType': "stocks-v0",
-    'Render': True,
+    'Render': False,
     "Explanations": 10,
     "Pip": 0.000180 / 2,
     "Leverage": False,
@@ -27,7 +27,8 @@ params = {
     'Epochs': 2,
     'Gamma': 0.99,
     'Lambda': 0.99,
-    'UpdateTimestamp': 48,
+    'LenMemory': 12 * 24,
+    'BatchSize': 12,
     'EpsClip': 0.15,
     'ValueLossCoefficient': 0.5,
     'EntropyLossCoefficient': 0.002
