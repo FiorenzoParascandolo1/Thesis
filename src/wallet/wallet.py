@@ -7,7 +7,7 @@ from gym_anytrading.envs import Actions
 
 
 def compute_commissions(cap_inv, price_enter):
-    return cap_inv / price_enter * 3.50
+    return (cap_inv * price_enter) / 100000 * 3.50
 
 
 def max_dd(wallet_series: list) -> float:
