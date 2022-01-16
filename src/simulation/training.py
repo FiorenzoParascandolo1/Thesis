@@ -15,7 +15,7 @@ def training_loop(params: dict):
     param dict: hyper parameters
     returns:
     """
-    wandb.init(project="forex_experiments", entity="fiorenzoparascandolo", config=params)
+    wandb.init(project="forex", entity="fiorenzoparascandolo", config=params)
 
     df = pd.read_csv(params["FileName"], delimiter="\t")
     df = clean_dataframe(df)
@@ -71,6 +71,7 @@ def training_loop(params: dict):
 
         # If the experiment is finished generate the dataframe for performances
         if done:
+            plt.imshow(policy.policy_old.explanation_tensor)
             # Render performances
             env.wallet.wandb_final()
             # Stop the experiment

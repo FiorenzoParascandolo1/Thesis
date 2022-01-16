@@ -153,17 +153,17 @@ class Wallet(object):
         self.last_commissions_paid = 0
 
         if action == 1 and current_position == 1:
-            pl_step = (last_price - self.pip - price_enter + self.pip) / (price_enter + self.pip) * self.cap_inv
+            pl_step = ((last_price - self.pip) - (price_enter + self.pip)) / (price_enter + self.pip) * self.cap_inv
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
 
         if action == 0 and current_position == 0:
-            pl_step = (price_enter - self.pip - last_price + self.pip) / (price_enter - self.pip) * self.cap_inv
+            pl_step = ((price_enter - self.pip) - (last_price + self.pip)) / (price_enter - self.pip) * self.cap_inv
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
 
         if action == 0 and current_position == 1:
-            pip_pl = last_price - self.pip - price_enter + self.pip
+            pip_pl = (last_price - self.pip) - (price_enter + self.pip)
             pl_step = pip_pl / (price_enter + self.pip) * self.cap_inv
             commissions = self.pip * 2 * self.cap_inv / (price_enter + self.pip)
             position_step = 0
@@ -172,7 +172,6 @@ class Wallet(object):
             wallet_step = self.wallet + pl_step
             self.total_reward = wallet_step - self.starting_wallet
             self.wallet = wallet_step
-
             if pl_step > 0:
                 # Update the number of profit trades
                 self.profit_trades += 1
@@ -185,7 +184,7 @@ class Wallet(object):
             self.tot_operation += 1
 
         if action == 1 and current_position == 0:
-            pip_pl = price_enter - self.pip - last_price + self.pip
+            pip_pl = (price_enter - self.pip) - (last_price + self.pip)
             pl_step = pip_pl / (price_enter - self.pip) * self.cap_inv
             commissions = self.pip * 2 * self.cap_inv / (price_enter - self.pip)
             position_step = 1
@@ -194,7 +193,6 @@ class Wallet(object):
             wallet_step = self.wallet + pl_step
             self.total_reward = wallet_step - self.starting_wallet
             self.wallet = wallet_step
-
             if pl_step > 0:
                 # Update the number of profit trades
                 self.profit_trades += 1
