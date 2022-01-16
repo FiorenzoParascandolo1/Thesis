@@ -277,7 +277,7 @@ class Environment(StocksEnv):
         if self._position == 0:
             p_l = (observation[-2, 5] - self.pip - self.last_price_long) / self.last_price_long
         else:
-            p_l = (self.last_price_short - observation[-2, 5] + self.pip) / self.last_price_short
+            p_l = (self.last_price_short - (observation[-2, 5] + self.pip)) / self.last_price_short
 
         if self._position.value == 0:
             short = 1.0
