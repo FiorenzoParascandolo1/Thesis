@@ -1,9 +1,6 @@
 import numpy as np
 import pandas as pd
-from enum import Enum
 import math
-
-from gym_anytrading.envs import Actions
 
 
 def compute_commissions(cap_inv):

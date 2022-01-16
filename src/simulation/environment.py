@@ -158,8 +158,8 @@ class Environment(StocksEnv):
         because a trajectory buy/sell is completed 
         """
         if action[0] == Actions.Sell.value and self._position == Positions.Long:
-            price_1 = self.open_prices[self._last_trade_tick]
-            price_2 = self.prices[self._current_tick - 2]
+            price_1 = self.prices[self._current_tick - 2]
+            price_2 = self.open_prices[self._last_trade_tick]
             denominator = price_2
             done = True
         """
