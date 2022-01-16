@@ -3,8 +3,8 @@ import pandas as pd
 import math
 
 
-def compute_commissions(cap_inv):
-    return cap_inv * 0.000003 * 0.7
+def compute_commissions(cap_inv, commissions_percent):
+    return cap_inv * commissions_percent * 0.7
 
 
 def max_dd(wallet_series: list) -> float:
@@ -33,6 +33,7 @@ class Wallet(object):
                  wallet,
                  bet_size_factor,
                  leverage,
+                 commissions_percent,
                  wandb):
         """
         :param wallet: amount of starting wallet
@@ -51,6 +52,7 @@ class Wallet(object):
                         "Commissions": [],
                         "Positions": []}
 
+        self.commissions_percent = commissions_percent
         self.wandb = wandb
         self.starting_wallet = wallet
         self.wallet = self.starting_wallet
@@ -149,7 +151,7 @@ class Wallet(object):
         wallet_step = self.wallet
         self.last_position = current_position
         self.last_commissions_paid = 0
-        commissions = compute_commissions(cap_inv=self.cap_inv)
+        commissions = compute_commissions(self.cap_inv, self.commissions_percent)
 
         if action == 1 and current_position == 1:
             pl_step = (last_price - price_enter) / price_enter * self.cap_inv

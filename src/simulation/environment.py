@@ -62,6 +62,7 @@ class Environment(StocksEnv):
                  name: str,
                  leverage: bool,
                  gaf: str,
+                 commissions_percent: float,
                  wandb):
         """
         :param df: dataframe used to compile the trading simulation
@@ -77,7 +78,9 @@ class Environment(StocksEnv):
         self.wallet = Wallet(starting_wallet,
                              bet_size_factor,
                              leverage,
+                             commissions_percent,
                              wandb)
+        self.commissions_percent = commissions_percent
         self.periods = periods
         self.render = render
         self.open_prices = df['open']
@@ -150,7 +153,7 @@ class Environment(StocksEnv):
         """
         done = False
         price_1 = price_2 = denominator = 0
-        commissions = compute_commissions(cap_inv=self.wallet.cap_inv)
+        commissions = compute_commissions(cap_inv=self.wallet.cap_inv, commissions_percent=self.commissions_percent)
         """
         Case 1:
         if I held a Long position open and decided to sell -> the reward is the profit obtained, namely the percentage

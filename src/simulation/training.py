@@ -33,6 +33,7 @@ def training_loop(params: dict):
                       name=params["FileName"].partition('.')[0],
                       leverage=params['Leverage'],
                       gaf=params['Type'],
+                      commissions_percent=params['CommissionsPercent'],
                       wandb=wandb)
 
     policy = PPO(params, wandb)
