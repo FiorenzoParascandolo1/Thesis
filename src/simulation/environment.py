@@ -2,7 +2,7 @@ from gym_anytrading.envs import StocksEnv, Actions, Positions
 import pandas as pd
 import math
 import numpy as np
-from src.wallet.wallet import Wallet
+from src.wallet.wallet import Wallet, compute_commissions
 import torch
 from src.data_utils.preprocessing_utils import StackImages, GADFTransformation, ManagePeriods
 from torchvision.transforms import transforms
@@ -153,7 +153,8 @@ class Environment(StocksEnv):
         """
         done = False
         price_1 = price_2 = denominator = 0
-
+        commissions = compute_commissions(cap_inv=self.wallet.cap_inv,
+                                          price_enter=self.open_prices[self._last_trade_tick])
         """
         Case 1:
         if I held a Long position open and decided to sell -> the reward is the profit obtained, namely the percentage
@@ -161,8 +162,8 @@ class Environment(StocksEnv):
         because a trajectory buy/sell is completed 
         """
         if action[0] == Actions.Sell.value and self._position == Positions.Long:
-            price_1 = self.open_prices[self._current_tick - 2] - self.pip
-            price_2 = self.prices[self._last_trade_tick] + self.pip
+            price_1 = self.open_prices[self._last_trade_tick] - self.pip
+            price_2 = self.prices[self._current_tick - 2] + self.pip
             denominator = price_2
             done = True
         """
@@ -187,6 +188,7 @@ class Environment(StocksEnv):
             price_1 = self.prices[self._current_tick - 1]
             price_2 = self.prices[self._current_tick - 2]
             denominator = price_2
+            commissions = 0
         """
         Case 4:
         if I held a Short position open and decided to sell -> the reward is the profit obtained as if you had opened 
@@ -198,8 +200,9 @@ class Environment(StocksEnv):
             price_1 = self.prices[self._current_tick - 2]
             price_2 = self.prices[self._current_tick - 1]
             denominator = price_1
+            commissions = 0
 
-        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv
+        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv - commissions
 
         return step_reward, done
 
@@ -458,7 +461,8 @@ class Environment(StocksEnv):
 
                 # Compute marker position for labels BUY/SELL
                 markers = [self.last_obs[i - 1]['High'].tolist()[j] +
-                           0.0001 if self.last_obs[i - 1]['Close'].tolist()[j] > self.last_obs[i - 1]['Open'].tolist()[j]
+                           0.0001 if self.last_obs[i - 1]['Close'].tolist()[j] > self.last_obs[i - 1]['Open'].tolist()[
+                    j]
                            else self.last_obs[i - 1]['Low'].tolist()[j] - 0.0001 for j in range(len(positions))]
                 # Set to np.nan the markers for actions that not change the position on the market
                 markers = [markers[j] if positions[j] is not None else np.nan for j in range(len(positions))]
@@ -495,10 +499,14 @@ class Environment(StocksEnv):
                                   xaxis2=dict(rangeslider=dict(visible=False)),
                                   xaxis3=dict(rangeslider=dict(visible=False)),
                                   xaxis4=dict(rangeslider=dict(visible=False)),
-                                  yaxis1=dict(range=[min(self.last_obs[0]['Low'].tolist()), max(self.last_obs[0]['High'].tolist())]),
-                                  yaxis2=dict(range=[min(self.last_obs[1]['Low'].tolist()), max(self.last_obs[1]['High'].tolist())]),
-                                  yaxis3=dict(range=[min(self.last_obs[2]['Low'].tolist()), max(self.last_obs[2]['High'].tolist())]),
-                                  yaxis4=dict(range=[min(self.last_obs[3]['Low'].tolist()), max(self.last_obs[3]['High'].tolist())]),
+                                  yaxis1=dict(range=[min(self.last_obs[0]['Low'].tolist()),
+                                                     max(self.last_obs[0]['High'].tolist())]),
+                                  yaxis2=dict(range=[min(self.last_obs[1]['Low'].tolist()),
+                                                     max(self.last_obs[1]['High'].tolist())]),
+                                  yaxis3=dict(range=[min(self.last_obs[2]['Low'].tolist()),
+                                                     max(self.last_obs[2]['High'].tolist())]),
+                                  yaxis4=dict(range=[min(self.last_obs[3]['Low'].tolist()),
+                                                     max(self.last_obs[3]['High'].tolist())]),
 
                                   margin=dict(b=0, l=0, r=0, t=50),
                                   title={'text': "Explanation",
