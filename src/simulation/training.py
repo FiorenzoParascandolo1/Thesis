@@ -31,7 +31,6 @@ def training_loop(params: dict):
                       manage_symmetries=params['ManageSymmetries'],
                       render=params['Render'],
                       name=params["FileName"].partition('.')[0],
-                      pip=params['Pip'],
                       leverage=params['Leverage'],
                       gaf=params['Type'],
                       wandb=wandb)
