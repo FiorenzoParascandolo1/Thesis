@@ -4,7 +4,7 @@ import math
 
 
 def compute_commissions(cap_inv, commissions_percent):
-    return cap_inv * commissions_percent * 0.7
+    return cap_inv * commissions_percent * 0.7 * 2
 
 
 def max_dd(wallet_series: list) -> float:
