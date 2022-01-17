@@ -33,7 +33,7 @@ class Wallet(object):
                  wallet,
                  bet_size_factor,
                  leverage,
-                 commissions_percent,
+                 pip,
                  wandb):
         """
         :param wallet: amount of starting wallet
@@ -52,7 +52,7 @@ class Wallet(object):
                         "Commissions": [],
                         "Positions": []}
 
-        self.commissions_percent = commissions_percent
+        self.pip = pip
         self.wandb = wandb
         self.starting_wallet = wallet
         self.wallet = self.starting_wallet
@@ -151,24 +151,23 @@ class Wallet(object):
         wallet_step = self.wallet
         self.last_position = current_position
         self.last_commissions_paid = 0
-        commissions = compute_commissions(self.cap_inv, self.commissions_percent)
+        commissions = 0
 
         if action == 1 and current_position == 1:
-            pl_step = (last_price - price_enter) / price_enter * self.cap_inv
+            pl_step = ((last_price - self.pip) - (price_enter + self.pip)) / (price_enter + self.pip) * self.cap_inv
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
-            commissions = 0
 
         if action == 0 and current_position == 0:
-            pl_step = (price_enter - last_price) / price_enter * self.cap_inv
+            pl_step = ((price_enter - self.pip) - (last_price + self.pip)) / (price_enter - self.pip) * self.cap_inv
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
-            commissions = 0
 
         if action == 0 and current_position == 1:
-            pip_pl = last_price - price_enter
-            pl_step = pip_pl / price_enter * self.cap_inv - commissions
+            pip_pl = (last_price - self.pip) - (price_enter + self.pip)
+            pl_step = pip_pl / (price_enter + self.pip) * self.cap_inv
             position_step = 0
+            commissions = self.cap_inv * 2 * self.pip / (price_enter + self.pip)
             self.last_commissions_paid = commissions
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step
@@ -186,9 +185,10 @@ class Wallet(object):
             self.tot_operation += 1
 
         if action == 1 and current_position == 0:
-            pip_pl = price_enter - last_price
-            pl_step = pip_pl / price_enter * self.cap_inv - commissions
+            pip_pl = (price_enter - self.pip) - (last_price + self.pip)
+            pl_step = pip_pl / (price_enter - self.pip) * self.cap_inv
             position_step = 1
+            commissions = self.cap_inv * 2 * self.pip / (price_enter - self.pip)
             self.last_commissions_paid = commissions
             equity_ts_step = (self.total_reward + pl_step) / self.starting_wallet
             wallet_step = self.wallet + pl_step

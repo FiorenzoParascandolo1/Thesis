@@ -62,7 +62,7 @@ class Environment(StocksEnv):
                  name: str,
                  leverage: bool,
                  gaf: str,
-                 commissions_percent: float,
+                 pip: float,
                  wandb):
         """
         :param df: dataframe used to compile the trading simulation
@@ -78,9 +78,9 @@ class Environment(StocksEnv):
         self.wallet = Wallet(starting_wallet,
                              bet_size_factor,
                              leverage,
-                             commissions_percent,
+                             pip,
                              wandb)
-        self.commissions_percent = commissions_percent
+        self.pip = pip
         self.periods = periods
         self.render = render
         self.open_prices = df['open']
@@ -153,7 +153,6 @@ class Environment(StocksEnv):
         """
         done = False
         price_1 = price_2 = denominator = 0
-        commissions = compute_commissions(cap_inv=self.wallet.cap_inv, commissions_percent=self.commissions_percent)
         """
         Case 1:
         if I held a Long position open and decided to sell -> the reward is the profit obtained, namely the percentage
@@ -161,8 +160,8 @@ class Environment(StocksEnv):
         because a trajectory buy/sell is completed 
         """
         if action[0] == Actions.Sell.value and self._position == Positions.Long:
-            price_1 = self.prices[self._current_tick - 2]
-            price_2 = self.open_prices[self._last_trade_tick]
+            price_1 = self.prices[self._current_tick - 2] - self.pip
+            price_2 = self.open_prices[self._last_trade_tick] + self.pip
             denominator = price_2
             done = True
         """
@@ -172,8 +171,8 @@ class Environment(StocksEnv):
         done is set to True because a trajectory sell/buy is completed 
         """
         if action[0] == Actions.Buy.value and self._position == Positions.Short:
-            price_1 = self.open_prices[self._last_trade_tick]
-            price_2 = self.prices[self._current_tick - 2]
+            price_1 = self.open_prices[self._last_trade_tick] - self.pip
+            price_2 = self.prices[self._current_tick - 2] + self.pip
             denominator = price_1
             done = True
         """
@@ -187,7 +186,6 @@ class Environment(StocksEnv):
             price_1 = self.prices[self._current_tick - 1]
             price_2 = self.prices[self._current_tick - 2]
             denominator = price_2
-            commissions = 0
         """
         Case 4:
         if I held a Short position open and decided to sell -> the reward is the profit obtained as if you had opened 
@@ -199,9 +197,8 @@ class Environment(StocksEnv):
             price_1 = self.prices[self._current_tick - 2]
             price_2 = self.prices[self._current_tick - 1]
             denominator = price_1
-            commissions = 0
 
-        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv - commissions
+        step_reward = (price_1 - price_2) / denominator * self.wallet.cap_inv
 
         return step_reward, done
 
@@ -263,9 +260,9 @@ class Environment(StocksEnv):
             self._position = self._position.opposite()
 
             if action == Actions.Buy.value:
-                self.last_price_long = self.open_prices[self._last_trade_tick]
+                self.last_price_long = self.open_prices[self._last_trade_tick] + self.pip
             else:
-                self.last_price_short = self.open_prices[self._last_trade_tick]
+                self.last_price_short = self.open_prices[self._last_trade_tick] - self.pip
 
     def return_info(self,
                     observation: pd.Series) -> torch.Tensor:
@@ -276,10 +273,10 @@ class Environment(StocksEnv):
         :return: tensor info
         """
         # Profit/loss computation depends from the current position (long/short trade or short selling)
-        if self._position == 0:
-            p_l = (observation[-2, 5] - self.last_price_long) / self.last_price_long
+        if self._position == 1:
+            p_l = ((observation[-2, 5] - self.pip) - self.last_price_long) / self.last_price_long
         else:
-            p_l = (self.last_price_short - observation[-2, 5]) / self.last_price_short
+            p_l = (self.last_price_short - (observation[-2, 5] + self.pip)) / self.last_price_short
 
         if self._position.value == 0:
             short = 1.0
